@@ -24,30 +24,30 @@ static const uint8_t ICO_LINK_ON[]  = {0x00,0x6C,0x92,0x92,0x6C,0x00,0x00,0x00};
 static const uint8_t ICO_LINK_OFF[] = {0x60,0x90,0x90,0x60,0x0C,0x12,0x12,0x0C};
 
 //  ICO_FLAME     ICO_POWER     ICO_SNOW      ICO_WARNING   ICO_PUMP
-//  ...X....      ...X....      ...X....      ...X....      ..XXX...
-//  ..XXX...      ...X....      .X.X.X..      ..X.X...      .X...X..
-//  .XXXXX..      .X...X..      ..XXX...      .X.X.X..      X.....X.
+//  .....X..      ...X....      ...X....      ...X....      ..XXX...
+//  ..X..XX.      ...X....      .X.X.X..      ..X.X...      .X...X..
+//  X.XX.XX.      .X...X..      ..XXX...      .X.X.X..      X.....X.
 //  XXXXXXX.      X.....X.      XXXXXXXX      X..X..X.      XXXX..X.
-//  XXXXXXX.      X.....X.      ..XXX...      X..X..X.      X...XX..
-//  XXXXXXX.      .X...X..      .X.X.X..      X.....X.      X.....X.
+//  XX.X.XX.      X.....X.      ..XXX...      X..X..X.      X...XX..
+//  XXX.XXX.      .X...X..      .X.X.X..      X.....X.      X.....X.
 //  .XXXXX..      ..XXX...      ...X....      XXXXXXX.      .X...X..
 //  ..XXX...      ........      ........      ........      ..XXX...
-static const uint8_t ICO_FLAME[]    = {0x10,0x38,0x7C,0xFE,0xFE,0xFE,0x7C,0x38};
+static const uint8_t ICO_FLAME[]    = {0x04,0x26,0xB6,0xFE,0xD6,0xEE,0x7C,0x38};
 static const uint8_t ICO_POWER[]    = {0x10,0x10,0x44,0x82,0x82,0x44,0x38,0x00};
 static const uint8_t ICO_SNOW[]     = {0x10,0x54,0x38,0xFF,0x38,0x54,0x10,0x00};
 static const uint8_t ICO_WARNING[]  = {0x10,0x28,0x54,0x92,0x92,0x82,0xFE,0x00};
 static const uint8_t ICO_PUMP[]     = {0x38,0x44,0x82,0xF2,0x8C,0x82,0x44,0x38};
 
 //  ICO_PIPE      ICO_HOUSE     ICO_SUN
-//  .X...X..      ...X....      ...X....
+//  .....X..      ...X....      ...X....
 //  ..X..X..      ..X.X...      .X.X.X..
 //  ...X.X..      .X...X..      ..XXX...
-//  ....XX..      X.....X.      XX.X.XX.
+//  XXXXXX..      X.....X.      XX.X.XX.
 //  ...X.X..      .XXXXX..      XX.X.XX.
 //  ..X..X..      .XX.XX..      ..XXX...
-//  .X...X..      .XX.XX..      .X.X.X..
+//  .....X..      .XX.XX..      .X.X.X..
 //  ........      .XXXXX..      ...X....
-static const uint8_t ICO_PIPE[]     = {0x44,0x24,0x14,0x0C,0x14,0x24,0x44,0x00};
+static const uint8_t ICO_PIPE[]     = {0x04,0x24,0x14,0xFC,0x14,0x24,0x04,0x00};
 static const uint8_t ICO_HOUSE[]    = {0x10,0x28,0x44,0x82,0x7C,0x6C,0x6C,0x7C};
 static const uint8_t ICO_SUN[]      = {0x10,0x54,0x38,0xD6,0xD6,0x38,0x54,0x10};
 
