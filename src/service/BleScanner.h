@@ -15,7 +15,7 @@ struct IBSTh2Data {
     bool     valid;
 };
 
-class BleScanner : public NimBLEAdvertisedDeviceCallbacks {
+class BleScanner : public NimBLEScanCallbacks {
 public:
     explicit BleScanner(AppState& state);
     void begin();
@@ -26,7 +26,7 @@ public:
 
 private:
     // NimBLE callback — called from BLE task (different thread!)
-    void onResult(NimBLEAdvertisedDevice* device) override;
+    void onResult(const NimBLEAdvertisedDevice* device) override;
 
     void applyToState(bool isRoom, const IBSTh2Data& data);
 

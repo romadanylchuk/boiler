@@ -7,7 +7,7 @@
 enum class WebRole : uint8_t { NONE, OPERATOR, ADMIN };
 
 struct WebSession {
-    char     token[33] = {};  // 32-char random hex
+    char     token[65] = {};  // 64-char hex (32 random bytes → 64 hex chars + null)
     WebRole  role      = WebRole::NONE;
     uint32_t lastSeen  = 0;   // millis
     bool     active    = false;
@@ -40,6 +40,12 @@ private:
 
     // Setup (first boot)
     void handleSetup(AsyncWebServerRequest* req, JsonVariant& body);
+
+    // Password reset via secret phrase (no auth)
+    void handleResetAdminPassword(AsyncWebServerRequest* req, JsonVariant& body);
+
+    // Admin-gated actions: verify password, factory-reset
+    void handleAdminAction(AsyncWebServerRequest* req, JsonVariant& body);
 
     // ── Auth helpers ──────────────────────────────────────────────────────────
     WebRole  authenticateToken(AsyncWebServerRequest* req) const;

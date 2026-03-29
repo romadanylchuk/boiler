@@ -1,5 +1,6 @@
 #include "BoilerLogic.h"
 #include "../util/CurveInterp.h"
+#include "../model/pins.h"
 // model/AppState.h included via BoilerLogic.h
 #include <Arduino.h>
 

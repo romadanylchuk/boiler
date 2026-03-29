@@ -91,7 +91,7 @@ AppState (single source of truth)
 └── Hardware/Services:
     ├── DS18B20Driver, RelayDriver, BuzzerDriver, ButtonReader (PCF8574)
     ├── BleScanner (NimBLE), ApiClient (HTTP temp poll)
-    ├── MqttClient, OtaService (ElegantOTA)
+    ├── MqttService, OtaService (ElegantOTA)
     ├── TimeService (NTP + uptime fallback)
     └── NvsConfig (load/save Config to NVS)
 ```
@@ -100,7 +100,7 @@ Full spec: `.claude/architecture-firmware.md`
 
 ### AppState — single header, instantiated once in main.cpp
 
-`AppState.h` defines all structs:
+`src/model/AppState.h` defines all structs:
 - `SensorData` — flow/return/room/outside temps (NaN = unavailable), fault flags, lastSeen timestamps
 - `RelayState` — heater/pump on/off + timestamps
 - `SystemStatus` — mode (OFF/ON/ANTIFREEZE), phase (IDLE/PUMP_PRE/HEATING/PUMP_POST/PUMP_STANDBY), active setpoints, alarm flags
@@ -210,30 +210,31 @@ boiler/
 ├── platformio.ini
 ├── src/
 │   ├── main.cpp                  ← setup(), loop(), AppState instance
-│   ├── AppState.h                ← ALL data model structs
+│   ├── model/
+│   │   ├── AppState.h            ← ALL data model structs + EventLog
+│   │   └── pins.h                ← GPIO pin constants
 │   ├── controller/
 │   │   └── BoilerLogic.cpp/.h
-│   ├── drivers/
+│   ├── hardware/
 │   │   ├── DS18B20Driver.cpp/.h
 │   │   ├── RelayDriver.cpp/.h
 │   │   ├── BuzzerDriver.cpp/.h
 │   │   └── ButtonReader.cpp/.h   (PCF8574 + INT GPIO34)
-│   ├── services/
+│   ├── service/
 │   │   ├── BleScanner.cpp/.h     (NimBLE, IBS-TH2 parser)
 │   │   ├── ApiClient.cpp/.h      (HTTP poll for temp)
-│   │   ├── MqttClient.cpp/.h
+│   │   ├── MqttService.cpp/.h
 │   │   ├── OtaService.cpp/.h
 │   │   ├── TimeService.cpp/.h    (NTP + uptime fallback)
 │   │   └── NvsConfig.cpp/.h      (load/save Config)
-│   ├── views/
-│   │   ├── DisplayView.cpp/.h    (SSD1309 via U8g2)
-│   │   ├── WebView.cpp/.h        (ESPAsyncWebServer)
-│   │   └── MqttView.cpp/.h       (HA autodiscovery + alarms)
+│   ├── view/
+│   │   ├── display/DisplayView.cpp/.h  (SSD1309 via U8g2)
+│   │   ├── web/WebView.cpp/.h          (ESPAsyncWebServer)
+│   │   └── mqtt/MqttView.cpp/.h        (HA autodiscovery + alarms)
 │   └── util/
-│       ├── EventLog.cpp/.h
+│       ├── EventLog.cpp          (no separate .h — types in AppState.h)
 │       └── CurveInterp.cpp/.h    (weather compensation)
 ├── data/                         ← LittleFS: index.html, app.js, style.css
 └── test/
-    ├── test_curve_interp.cpp
-    └── test_boiler_logic.cpp     (native env, no hardware)
+    └── test_curve_interp.cpp     (native env, no hardware)
 ```

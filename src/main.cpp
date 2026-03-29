@@ -1,8 +1,11 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <WiFi.h>
+#include <ESPmDNS.h>
 
 // Model
 #include "model/AppState.h"
+#include "model/pins.h"
 
 // Controller
 #include "controller/BoilerLogic.h"
@@ -45,7 +48,7 @@ OtaService  otaService(state);
 
 BoilerLogic boilerLogic(state, relays, buzzer, timeService);
 
-DisplayView displayView(state);
+DisplayView displayView(state, timeService);
 WebView     webView(state, boilerLogic);
 MqttView    mqttView(state, mqttService);
 
@@ -71,9 +74,10 @@ void setup() {
     displayView.begin();
     displayView.showBoot();
 
-    // WiFi
-    if (state.config.setupComplete) {
-        Serial.println("[wifi] Connecting...");
+    // WiFi — try STA if credentials are configured
+    if (state.config.wifiSsid[0] != '\0') {
+        Serial.println("[wifi] Connecting to STA...");
+        WiFi.mode(WIFI_STA);
         WiFi.begin(state.config.wifiSsid, state.config.wifiPass);
         uint32_t t = millis();
         while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
@@ -93,11 +97,30 @@ void setup() {
         mqttView.begin();
         webView.begin();
         otaService.begin();
-        Serial.printf("[wifi] IP: %s\n", WiFi.localIP().toString().c_str());
+        if (MDNS.begin("boiler")) {
+            MDNS.addService("http", "tcp", 80);
+            Serial.println("[mdns] boiler.local ready");
+        }
+        Serial.printf("[wifi] STA IP: %s\n", WiFi.localIP().toString().c_str());
+    } else {
+        // No STA — start Access Point so the web UI is always reachable
+        uint8_t mac[6];
+        WiFi.mode(WIFI_AP);
+        WiFi.macAddress(mac);
+        snprintf(state.status.apSsid, sizeof(state.status.apSsid),
+                 "Boiler-%02X%02X%02X", mac[3], mac[4], mac[5]);
+        WiFi.softAP(state.status.apSsid, "boilersetup");
+        state.status.apMode = true;
+        webView.begin();
+        Serial.printf("[wifi] AP started: SSID=%s  pass=boilersetup  IP=%s\n",
+                      state.status.apSsid,
+                      WiFi.softAPIP().toString().c_str());
     }
 
-    // BLE scanner (runs regardless of WiFi)
-    bleScanner.begin();
+    // BLE scanner — skip in AP mode (NimBLE init disrupts the AP radio)
+    if (!state.status.apMode) {
+        bleScanner.begin();
+    }
 
     // Boiler controller — always starts in OFF mode
     state.status.mode  = SystemMode::OFF;
@@ -108,6 +131,10 @@ void setup() {
     if (!state.config.setupComplete) {
         Serial.println("[boot] First boot — setup required via web UI");
         displayView.showSetupRequired();
+    } else if (state.status.wifiConnected) {
+        displayView.showIp(WiFi.localIP().toString().c_str());
+    } else {
+        displayView.showMain();
     }
 
     Serial.println("[boot] Ready.");
@@ -122,11 +149,12 @@ void loop() {
     ds18b20.update();
 
     // ── Optional sensor sources ───────────────────────────────────────────────
-    bleScanner.update();
+    if (!state.status.apMode) bleScanner.update();
     apiClient.update();
 
     // ── Button input ──────────────────────────────────────────────────────────
     buttons.update();
+    if (buttons.hasEvent()) displayView.handleButton(buttons.consume());
 
     // ── Heating controller ────────────────────────────────────────────────────
     boilerLogic.update();
@@ -141,9 +169,9 @@ void loop() {
         otaService.update();
     }
 
-    // ── WiFi reconnect watchdog ───────────────────────────────────────────────
+    // ── WiFi reconnect watchdog (STA mode only) ───────────────────────────────
     static uint32_t lastWifiCheck = 0;
-    if (millis() - lastWifiCheck > 30000) {
+    if (!state.status.apMode && millis() - lastWifiCheck > 30000) {
         lastWifiCheck = millis();
         bool connected = (WiFi.status() == WL_CONNECTED);
         if (!connected && state.status.wifiConnected) {

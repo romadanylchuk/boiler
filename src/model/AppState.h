@@ -94,6 +94,8 @@ struct SystemStatus {
     bool   mqttConnected;
     bool   wifiConnected;
     bool   ntpSynced;
+    bool   apMode;                  // true when running as WiFi Access Point (no STA)
+    char   apSsid[24];              // AP SSID shown on display ("Boiler-XXXXXX")
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -284,6 +286,7 @@ struct Config {
     char operatorUser[32]     = "operator";
     char operatorPassHash[65] = {};
     char apiToken[65]         = {};   // 32-byte random hex, generated on first boot
+    char resetPhrase[32]      = "boiler123";  // secret phrase for admin password reset
 
     // ── First-boot flag ──
     bool setupComplete = false;
@@ -300,6 +303,10 @@ struct AppState {
     AlarmState   alarms;
     Config       config;
     EventLog     log;
+
+    // Set by web task, consumed by DisplayView::update() on the main loop task.
+    // Values map to ButtonEvent enum: 0=none, 1=UP, 2=DOWN, 3=ENTER, 4=BACK, 5=SETTINGS.
+    volatile uint8_t pendingWebButton = 0;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
