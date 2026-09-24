@@ -19,7 +19,7 @@ AND room_temp  <  (room_setpoint - room_hysteresis)   [only if room sensor avail
 AND external_thermostat == ALLOW                       [if configured]
 AND ha_remote_disable == false
 AND flow_temp  <  80°C
-AND heater_off_elapsed  >=  3 min
+AND heater_off_elapsed  >=  min_heater_off_time   [60–180 s, configurable]
 ```
 
 ### Heater STOP conditions (ANY is true):
@@ -52,11 +52,17 @@ START trigger received
   → All conditions still true after pre_delay → Heater ON
   → [Heating runs — normal STOP conditions apply]
   → Heater OFF
-  → Wait post_delay (= pre_delay, same value)
-      ↑ No condition checks during post_delay — pump always finishes cool-down
-  → Pump OFF
+  → Wait post_delay (= pre_delay, same value), counted from heater OFF
+      ↑ Start conditions (except min_heater_off_time) re-checked continuously
+      ↑ If ALL are true → heat demand returned:
+            Pump stays ON (even past post_delay)
+            Wait until min_heater_off_time elapsed
+            → back to pre_delay (full length, pump not restarted, no new pump-ON log)
+  → No heat demand when post_delay done → Pump OFF
   → [Standby]
 ```
+NOTE: if heater never turned on (cancelled during pre_delay), post phase only
+waits until pump has run pump_min_on_time (= pre_delay) since pump start.
 
 ### Standby pump run (anti-freeze circulation):
 - Period: configurable 30 min – 3 h
@@ -114,7 +120,7 @@ Hardware backup: physical 85°C thermostat on heater (independent of firmware).
 |-----------|-------|---------|
 | pump_pre_post_delay | 30–120 sec | 60 sec |
 | min_heater_on_time | fixed | 3 min |
-| min_heater_off_time | fixed | 3 min |
+| min_heater_off_time | 60–180 sec | 180 sec |
 | standby_pump_period | 30 min – 3 h | 2 h |
 | standby_pump_duration | 1–5 min | 3 min |
 

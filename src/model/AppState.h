@@ -251,7 +251,8 @@ struct Config {
     uint16_t pumpPrePostDelaySec  =  60;  // 30–120 s
     uint16_t standbyPumpPeriodMin = 120;  // 30–180 min
     uint8_t  standbyPumpDurationMin = 3;  // 1–5 min
-    // min heater ON/OFF times are fixed constants — not stored
+    uint16_t minHeaterOffSec      = 180;  // 60–180 s
+    // min heater ON time is a fixed constant — not stored
 
     // ── Hardware ──
     ThermostatContact thermostatMode = ThermostatContact::NORMAL_OPEN;
@@ -293,6 +294,32 @@ struct Config {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Test Mode State (RAM only, not persisted)
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct TestState {
+    bool  active             = false;
+
+    // Temperature injection — replaces DS18B20 + ApiClient readings while active
+    float flowTemp           = NAN;   // NAN = no injection (sensor unavailable)
+    float returnTemp         = NAN;
+    float roomTemp           = NAN;   // NAN = optional sensor not present
+    float outsideTemp        = NAN;
+
+    // Fault injection — direct flags replacing DS18B20 fault detection
+    bool  flowFault          = false;
+    bool  returnFault        = false;
+
+    // Sensor lost simulation — BoilerLogic applies these immediately
+    bool  roomSensorLost     = false;
+    bool  outsideSensorLost  = false;
+
+    // External thermostat override — replaces digitalRead(PIN_DIN_THERMOSTAT)
+    bool  thermostatOverride = false;
+    bool  thermostatAllow    = true;  // effective value when override is active
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Root State — single instance in main.cpp
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -303,10 +330,15 @@ struct AppState {
     AlarmState   alarms;
     Config       config;
     EventLog     log;
+    TestState    test;
 
     // Set by web task, consumed by DisplayView::update() on the main loop task.
     // Values map to ButtonEvent enum: 0=none, 1=UP, 2=DOWN, 3=ENTER, 4=BACK, 5=SETTINGS.
     volatile uint8_t pendingWebButton = 0;
+
+    // Set by ButtonReader on any hardware button press, consumed by /api/state.
+    // Same encoding as pendingWebButton.
+    volatile uint8_t lastHwButton = 0;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,7 +351,6 @@ namespace Limits {
     constexpr float  ANTIFREEZE_HEATER_OFF= 10.0f;   // °C return — stop in antifreeze
     constexpr float  ANTIFREEZE_ROOM_MAX  = 10.0f;   // °C room — guard in antifreeze
     constexpr uint32_t MIN_HEATER_ON_MS   = 3 * 60 * 1000;  // 3 min
-    constexpr uint32_t MIN_HEATER_OFF_MS  = 3 * 60 * 1000;  // 3 min
     constexpr uint32_t SENSOR_TIMEOUT_MS  = 5 * 60 * 1000;  // 5 min → alarm
     constexpr uint8_t  BLE_LOW_BATTERY_PCT = 20;
 }

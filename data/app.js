@@ -75,7 +75,7 @@ function renderApp() {
     const navLinks = [
         ['dashboard', 'Dashboard'],
         ['log', 'Log'],
-        ...(userRole === 'admin' ? [['settings', 'Settings']] : []),
+        ...(userRole === 'admin' ? [['settings', 'Settings'], ['test', 'Test \u2697']] : []),
     ].map(([v, l]) => `<a onclick="navigate('${v}')" class="${currentView===v?'active':''}">${l}</a>`).join('');
 
     root.innerHTML = `
@@ -91,6 +91,7 @@ function renderApp() {
     if (currentView === 'dashboard') loadDashboard();
     else if (currentView === 'log') loadLog();
     else if (currentView === 'settings') loadSettings();
+    else if (currentView === 'test') loadTest();
 }
 
 function view() { return document.getElementById('view'); }
@@ -386,6 +387,8 @@ function tplControl(c) {
                     <input type="number" name="standbyPumpPeriodMin" min="30" max="180" value="${c.standbyPumpPeriodMin}"></div>
                 <div class="form-group"><label>Standby Duration min (1&ndash;5)</label>
                     <input type="number" name="standbyPumpDurationMin" min="1" max="5" value="${c.standbyPumpDurationMin}"></div>
+                <div class="form-group"><label>Min Heater Off s (60&ndash;180)</label>
+                    <input type="number" name="minHeaterOffSec" min="60" max="180" value="${c.minHeaterOffSec}"></div>
             </div>
         </div>
         <div class="form-section">
@@ -575,7 +578,7 @@ async function saveSettings() {
     if (settingsTab === 'control') {
         const fields = ['flowSetpoint','returnSetpoint','flowHysteresis','returnHysteresis',
                         'roomSetpoint','roomHysteresis','pumpPrePostDelaySec',
-                        'standbyPumpPeriodMin','standbyPumpDurationMin'];
+                        'standbyPumpPeriodMin','standbyPumpDurationMin','minHeaterOffSec'];
         fields.forEach(k => { const v = gi(k); if (v !== null) payload[k] = v; });
         const tm = g('thermostatMode'); if (tm) payload.thermostatMode = tm;
     }
@@ -911,6 +914,200 @@ async function doSetup() {
     } catch (_) {
         if (msg) msg.innerHTML = '<div class="msg-error">Network error</div>';
     }
+}
+
+// ─── Test Mode Tab ────────────────────────────────────────────────────────────
+let testState = null;
+
+async function loadTest() {
+    const v = view(); if (v) v.innerHTML = '<div class="spinner">Loading&hellip;</div>';
+    await fetchState();
+    try {
+        const res = await fetch('/api/test', { headers: { 'Cookie': '' } });
+        // fetch with session — browser sends cookie automatically from same origin
+        const r2 = await apiGet('/api/test'); // uses Bearer which won't work, but we have session
+        if (r2.ok) testState = await r2.json();
+    } catch (_) {}
+    // Re-fetch properly via session (apiGet uses token, test needs session).
+    // For same-origin web UI this works via browser cookie.
+    renderTest();
+    refreshTimer = setInterval(async () => {
+        if (currentView !== 'test') return;
+        await fetchState();
+        renderTest();
+    }, 2000);
+}
+
+async function fetchTestState() {
+    try {
+        const res = await fetch('/api/test', { credentials: 'same-origin' });
+        if (res.ok) { testState = await res.json(); return true; }
+    } catch (_) {}
+    return false;
+}
+
+async function postTest(body) {
+    try {
+        const res = await fetch('/api/test', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (res.ok) { testState = await res.json(); return true; }
+    } catch (_) {}
+    return false;
+}
+
+function renderTest() {
+    const v = view(); if (!v) return;
+    const s = cachedState;
+    const t = testState;
+    const active = t && t.active;
+
+    const tempField = (id, label, val) => `
+        <div class="form-group" style="margin-bottom:8px">
+            <label style="font-size:11px;color:#94a3b8">${label}</label>
+            <div style="display:flex;gap:6px;align-items:center">
+                <input id="${id}" type="number" step="0.5" value="${val !== null && val !== undefined ? val : ''}"
+                    placeholder="&mdash;" style="width:90px;padding:4px 6px;background:#1e293b;border:1px solid #334155;border-radius:4px;color:#f1f5f9;font-size:13px">
+                <button class="btn" style="padding:3px 8px;font-size:12px" onclick="testSetTemp('${id}')">Set</button>
+                <button class="btn" style="padding:3px 8px;font-size:12px;color:#94a3b8" onclick="testClearTemp('${id}')">Clear</button>
+            </div>
+        </div>`;
+
+    const faultCheck = (id, label, checked) => `
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;margin-bottom:6px">
+            <input type="checkbox" id="${id}" ${checked ? 'checked' : ''} onchange="testSetFault('${id}',this.checked)">
+            ${label}
+        </label>`;
+
+    const relayDot = (on, label) => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <div style="width:10px;height:10px;border-radius:50%;background:${on?'#22c55e':'#475569'}"></div>
+            <span style="font-size:13px">${label}: <strong>${on?'ON':'OFF'}</strong></span>
+        </div>`;
+
+    v.innerHTML = `
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+
+            <div class="card" style="flex:1;min-width:280px">
+                <h3 style="display:flex;align-items:center;gap:10px">
+                    Test Mode
+                    <span style="font-size:12px;padding:2px 8px;border-radius:10px;background:${active?'#166534':'#374151'};color:${active?'#86efac':'#9ca3af'}">
+                        ${active ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
+                </h3>
+                ${active
+                    ? `<button class="btn btn-danger" style="width:100%;margin-bottom:12px" onclick="testToggle(false)">Deactivate Test Mode</button>`
+                    : `<button class="btn btn-primary" style="width:100%;margin-bottom:12px" onclick="testToggle(true)">Activate Test Mode</button>`
+                }
+                <p style="font-size:12px;color:#64748b;margin-bottom:12px">
+                    When active, DS18B20 and API sensor readings are replaced by the injected values below.
+                    All other hardware (relays, buzzer, display) works normally.
+                </p>
+                <a href="../tools/test-runner/test-runner.html" target="_blank"
+                   style="display:block;text-align:center;padding:8px;background:#1e40af;color:#bfdbfe;border-radius:6px;font-size:13px;text-decoration:none">
+                    &#128640; Open Automated Test Runner &rarr;
+                </a>
+            </div>
+
+            <div class="card" style="flex:1;min-width:280px">
+                <h3>Temperature Injection</h3>
+                <p style="font-size:11px;color:#64748b;margin-bottom:10px">Empty = sensor unavailable (NaN)</p>
+                ${tempField('ti-flow',    'Flow temp (°C)',    t ? t.flowTemp    : null)}
+                ${tempField('ti-return',  'Return temp (°C)',  t ? t.returnTemp  : null)}
+                ${tempField('ti-room',    'Room temp (°C)',    t ? t.roomTemp    : null)}
+                ${tempField('ti-outside', 'Outside temp (°C)', t ? t.outsideTemp : null)}
+                <div style="margin-top:10px">
+                    ${faultCheck('ti-flowfault',   'Flow sensor fault',   t && t.flowFault)}
+                    ${faultCheck('ti-returnfault', 'Return sensor fault', t && t.returnFault)}
+                    ${faultCheck('ti-roomlost',    'Room sensor lost',    t && t.roomSensorLost)}
+                    ${faultCheck('ti-outsidelost', 'Outside sensor lost', t && t.outsideSensorLost)}
+                </div>
+                <div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e293b">
+                    <label style="font-size:11px;color:#94a3b8">Thermostat override</label>
+                    <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+                        <button class="btn ${t&&t.thermostatOverride&&t.thermostatAllow?'btn-primary':''}" style="font-size:12px;padding:4px 10px"
+                            onclick="testSetThermostat(true,true)">Override: ALLOW</button>
+                        <button class="btn ${t&&t.thermostatOverride&&!t.thermostatAllow?'btn-danger':''}" style="font-size:12px;padding:4px 10px"
+                            onclick="testSetThermostat(true,false)">Override: BLOCK</button>
+                        <button class="btn ${t&&!t.thermostatOverride?'active-off':''}" style="font-size:12px;padding:4px 10px"
+                            onclick="testSetThermostat(false,true)">Use GPIO</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="flex:1;min-width:220px">
+                <h3>Live State</h3>
+                ${s ? `
+                    ${relayDot(s.relays.heater, 'Heater')}
+                    ${relayDot(s.relays.pump,   'Pump')}
+                    <div style="margin-top:8px;font-size:12px;color:#94a3b8">
+                        Mode: <strong style="color:#f1f5f9">${s.status.mode.toUpperCase()}</strong><br>
+                        Phase: <strong style="color:#f1f5f9">${s.status.phase}</strong><br>
+                        Flow&nbsp;SP: <strong style="color:#f1f5f9">${s.status.activeFlowSetpoint}&deg;C</strong><br>
+                        Return SP: <strong style="color:#f1f5f9">${s.status.activeReturnSetpoint}&deg;C</strong>
+                    </div>
+                    ${s.alarms.active ? `
+                        <div style="margin-top:8px;padding:6px 8px;background:#450a0a;border-radius:4px;font-size:11px;color:#fca5a5">
+                            &#9888; Alarms active (${s.alarms.active})
+                        </div>` : `
+                        <div style="margin-top:8px;font-size:11px;color:#22c55e">&#10003; No alarms</div>`}
+                    <div style="margin-top:8px;font-size:11px;color:#64748b">
+                        Sensors: flow=${s.sensors.flowTemp??'—'}&deg;  return=${s.sensors.returnTemp??'—'}&deg;
+                        ${s.sensors.roomTemp!=null?`  room=${s.sensors.roomTemp}&deg;`:''}
+                    </div>
+                    ${s.testMode ? '<div style="margin-top:6px;font-size:11px;color:#f59e0b">&#9888; Test mode active</div>' : ''}
+                ` : '<div style="color:#64748b">No state available</div>'}
+                <div style="margin-top:8px;font-size:11px;color:#334155">Auto-refresh 2s</div>
+            </div>
+
+        </div>`;
+}
+
+async function testToggle(activate) {
+    await postTest({ active: activate });
+    await fetchState();
+    renderTest();
+}
+
+async function testSetTemp(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const val = el.value.trim();
+    const key = { 'ti-flow': 'flowTemp', 'ti-return': 'returnTemp',
+                  'ti-room': 'roomTemp',  'ti-outside': 'outsideTemp' }[id];
+    if (!key) return;
+    const body = {};
+    body[key] = val === '' ? null : parseFloat(val);
+    await postTest(body);
+    renderTest();
+}
+
+async function testClearTemp(id) {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+    const key = { 'ti-flow': 'flowTemp', 'ti-return': 'returnTemp',
+                  'ti-room': 'roomTemp',  'ti-outside': 'outsideTemp' }[id];
+    if (!key) return;
+    const body = {}; body[key] = null;
+    await postTest(body);
+    renderTest();
+}
+
+async function testSetFault(id, checked) {
+    const key = { 'ti-flowfault': 'flowFault', 'ti-returnfault': 'returnFault',
+                  'ti-roomlost': 'roomSensorLost', 'ti-outsidelost': 'outsideSensorLost' }[id];
+    if (!key) return;
+    const body = {}; body[key] = checked;
+    await postTest(body);
+    renderTest();
+}
+
+async function testSetThermostat(override, allow) {
+    await postTest({ thermostatOverride: override, thermostatAllow: allow });
+    renderTest();
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

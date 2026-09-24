@@ -45,7 +45,6 @@ See full board reference: `.claude/hkl-ea2-board.md`
 | Buzzer           | 12   |
 | IIC SDA          | 4    |
 | IIC SCL          | 16   |
-| PCF8574 INT      | 34   |
 | Digital IN1      | 36   |
 | Digital IN2      | 39   |
 | RS485 RX/TX      | 35/32 |
@@ -69,7 +68,6 @@ Full references: `.claude/ssd1309-oled.md`, `.claude/pcf8574-buttons.md`
 |---------|---------|
 | paulstoffregen/OneWire + milesburton/DallasTemperature | DS18B20 sensors |
 | olikraus/U8g2 | SSD1309 OLED display |
-| xreef/PCF8574 library | Button expander |
 | h2zero/NimBLE-Arduino | BLE passive scanning |
 | marvinroger/async-mqtt-client | MQTT |
 | me-no-dev/ESP Async WebServer + AsyncTCP | REST API + SPA |
@@ -126,7 +124,7 @@ Mode changed via buttons, web UI, or HA MQTT.
 - external thermostat == ALLOW (if configured)
 - `ha_remote_disable == false`
 - `flow_temp < 80°C`
-- heater off for ≥ 3 min
+- heater off for ≥ `minHeaterOffSec` (60–180 s, default 180)
 
 **ON mode heater STOP** — any is true:
 - `flow_temp >= flow_setpoint`
@@ -135,7 +133,7 @@ Mode changed via buttons, web UI, or HA MQTT.
 - `ha_remote_disable == true`
 - `flow_temp >= 80°C` → OVERHEAT alarm
 
-**Pump sequence:** pre-delay → heater → post-delay (pre and post delay = same value, 30–120 s). All start conditions re-checked continuously during pre-delay; if any fails, heater is cancelled but pump finishes minimum run time.
+**Pump sequence:** pre-delay → heater → post-delay (pre and post delay = same value, 30–120 s). All start conditions re-checked continuously during pre-delay; if any fails, heater is cancelled but pump finishes minimum run time. During post-delay, start conditions are also re-checked: if heat demand returns, the pump stays on until min-off time elapses, then goes back to pre-delay (no pump off/on).
 
 **ANTIFREEZE mode:** pump always on; heater ON when `return_temp < 8°C` (+ `room_temp < 10°C` if available), OFF at `return_temp >= 10°C`.
 
@@ -219,7 +217,7 @@ boiler/
 │   │   ├── DS18B20Driver.cpp/.h
 │   │   ├── RelayDriver.cpp/.h
 │   │   ├── BuzzerDriver.cpp/.h
-│   │   └── ButtonReader.cpp/.h   (PCF8574 + INT GPIO34)
+│   │   └── ButtonReader.cpp/.h   (PCF8574, I2C polling)
 │   ├── service/
 │   │   ├── BleScanner.cpp/.h     (NimBLE, IBS-TH2 parser)
 │   │   ├── ApiClient.cpp/.h      (HTTP poll for temp)

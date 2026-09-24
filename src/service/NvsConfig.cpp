@@ -16,6 +16,7 @@ void NvsConfig::load(Config& cfg) {
     cfg.pumpPrePostDelaySec    = _prefs.getUShort("pumpDelay",    cfg.pumpPrePostDelaySec);
     cfg.standbyPumpPeriodMin   = _prefs.getUShort("stbyPeriod",   cfg.standbyPumpPeriodMin);
     cfg.standbyPumpDurationMin = _prefs.getUChar("stbyDur",      cfg.standbyPumpDurationMin);
+    cfg.minHeaterOffSec        = _prefs.getUShort("minOffSec",    cfg.minHeaterOffSec);
 
     // ── Hardware ───────────────────────────────────────────────────────────────
     cfg.thermostatMode = (ThermostatContact)_prefs.getUChar("tstatMode", (uint8_t)cfg.thermostatMode);
@@ -94,6 +95,7 @@ void NvsConfig::save(const Config& cfg) {
     _prefs.putUShort("pumpDelay",  cfg.pumpPrePostDelaySec);
     _prefs.putUShort("stbyPeriod", cfg.standbyPumpPeriodMin);
     _prefs.putUChar("stbyDur",     cfg.standbyPumpDurationMin);
+    _prefs.putUShort("minOffSec",  cfg.minHeaterOffSec);
 
     // Hardware
     _prefs.putUChar("tstatMode", (uint8_t)cfg.thermostatMode);
@@ -178,6 +180,7 @@ void NvsConfig::saveTiming(const Config& cfg) {
     _prefs.putUShort("pumpDelay",  cfg.pumpPrePostDelaySec);
     _prefs.putUShort("stbyPeriod", cfg.standbyPumpPeriodMin);
     _prefs.putUChar("stbyDur",     cfg.standbyPumpDurationMin);
+    _prefs.putUShort("minOffSec",  cfg.minHeaterOffSec);
     _prefs.end();
 }
 

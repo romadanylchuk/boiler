@@ -25,6 +25,8 @@ void MqttService::begin() {
 
     _client.setKeepAlive(60);
     _client.setCleanSession(true);
+    // Broker publishes this if the board drops off (power loss, crash) → HA marks entities unavailable
+    _client.setWill("boiler/status/online", 1, true, "offline");
 
     _client.onConnect([this](bool sessionPresent) {
         onConnect(sessionPresent);
@@ -83,6 +85,7 @@ void MqttService::onMessage(MessageCb cb) {
 
 void MqttService::onConnect(bool sessionPresent) {
     _state.status.mqttConnected = true;
+    _connectCount++;
     Serial.printf("[MqttService] Connected (session=%d)\n", (int)sessionPresent);
 }
 

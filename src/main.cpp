@@ -50,9 +50,44 @@ BoilerLogic boilerLogic(state, relays, buzzer, timeService);
 
 DisplayView displayView(state, timeService);
 WebView     webView(state, boilerLogic);
-MqttView    mqttView(state, mqttService);
+MqttView    mqttView(state, mqttService, boilerLogic);
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+static bool webStarted = false;
+static bool netStarted = false;
+static bool bleStarted = false;
+
+static void startWeb() {
+    if (webStarted) return;
+    webView.begin();
+    webStarted = true;
+}
+
+static void startBle() {
+    if (bleStarted) return;
+    bleScanner.begin();
+    bleStarted = true;
+}
+
+// Services that need the STA link. Called once — at boot if WiFi is up,
+// otherwise from the loop watchdog when STA connects later.
+static void startNetworkServices() {
+    if (netStarted) return;
+    netStarted = true;
+    timeService.begin(state.config.ntpServer1,
+                      state.config.ntpServer2,
+                      state.config.timezone);
+    mqttService.begin();
+    mqttView.begin();
+    startWeb();
+    otaService.begin();
+    if (MDNS.begin("boiler")) {
+        MDNS.addService("http", "tcp", 80);
+        Serial.println("[mdns] boiler.local ready");
+    }
+    Serial.printf("[wifi] STA IP: %s\n", WiFi.localIP().toString().c_str());
+}
 
 void setup() {
     Serial.begin(115200);
@@ -90,36 +125,29 @@ void setup() {
     state.status.wifiConnected = (WiFi.status() == WL_CONNECTED);
 
     if (state.status.wifiConnected) {
-        timeService.begin(state.config.ntpServer1,
-                          state.config.ntpServer2,
-                          state.config.timezone);
-        mqttService.begin();
-        mqttView.begin();
-        webView.begin();
-        otaService.begin();
-        if (MDNS.begin("boiler")) {
-            MDNS.addService("http", "tcp", 80);
-            Serial.println("[mdns] boiler.local ready");
-        }
-        Serial.printf("[wifi] STA IP: %s\n", WiFi.localIP().toString().c_str());
+        startNetworkServices();
     } else {
-        // No STA — start Access Point so the web UI is always reachable
+        // No STA link — start Access Point so the web UI is always reachable.
+        // If STA is configured, keep it retrying in the background (AP+STA):
+        // after a power cut the router often boots slower than the ESP32.
+        bool staConfigured = state.config.wifiSsid[0] != '\0';
         uint8_t mac[6];
-        WiFi.mode(WIFI_AP);
+        WiFi.mode(staConfigured ? WIFI_AP_STA : WIFI_AP);
         WiFi.macAddress(mac);
         snprintf(state.status.apSsid, sizeof(state.status.apSsid),
                  "Boiler-%02X%02X%02X", mac[3], mac[4], mac[5]);
         WiFi.softAP(state.status.apSsid, "boilersetup");
         state.status.apMode = true;
-        webView.begin();
-        Serial.printf("[wifi] AP started: SSID=%s  pass=boilersetup  IP=%s\n",
+        startWeb();
+        Serial.printf("[wifi] AP started: SSID=%s  pass=boilersetup  IP=%s%s\n",
                       state.status.apSsid,
-                      WiFi.softAPIP().toString().c_str());
+                      WiFi.softAPIP().toString().c_str(),
+                      staConfigured ? "  (STA still retrying)" : "");
     }
 
     // BLE scanner — skip in AP mode (NimBLE init disrupts the AP radio)
     if (!state.status.apMode) {
-        bleScanner.begin();
+        startBle();
     }
 
     // Boiler controller — always starts in OFF mode
@@ -169,19 +197,35 @@ void loop() {
         otaService.update();
     }
 
-    // ── WiFi reconnect watchdog (STA mode only) ───────────────────────────────
+    // ── WiFi reconnect watchdog (whenever STA is configured) ─────────────────
     static uint32_t lastWifiCheck = 0;
-    if (!state.status.apMode && millis() - lastWifiCheck > 30000) {
+    if (state.config.wifiSsid[0] != '\0' && millis() - lastWifiCheck > 30000) {
         lastWifiCheck = millis();
         bool connected = (WiFi.status() == WL_CONNECTED);
-        if (!connected && state.status.wifiConnected) {
-            Serial.println("[wifi] Connection lost, reconnecting...");
+        if (!connected) {
+            if (state.status.wifiConnected) Serial.println("[wifi] Connection lost, reconnecting...");
             WiFi.reconnect();
         }
         if (connected && !state.status.wifiConnected) {
-            Serial.println("[wifi] Reconnected.");
-            timeService.triggerResync();
-            mqttService.reconnect();
+            Serial.println("[wifi] Connected.");
+            if (!netStarted) {
+                // First STA connect after a failed boot attempt
+                startNetworkServices();
+            } else {
+                timeService.triggerResync();
+                mqttService.reconnect();
+            }
+            if (state.status.apMode) {
+                // Fallback AP no longer needed — drop it and start BLE
+                WiFi.softAPdisconnect(true);
+                WiFi.mode(WIFI_STA);
+                state.status.apMode = false;
+                Serial.println("[wifi] Fallback AP stopped");
+                startBle();
+                if (state.config.setupComplete) {
+                    displayView.showIp(WiFi.localIP().toString().c_str());
+                }
+            }
         }
         state.status.wifiConnected = connected;
         state.status.mqttConnected = mqttService.connected();

@@ -13,6 +13,8 @@ public:
     void reconnect();
 
     bool connected() const;
+    // Incremented on every successful (re)connect — lets MqttView detect a new session
+    uint32_t connectCount() const { return _connectCount; }
 
     bool publish(const char* topic, const char* payload,
                  bool retain = false, uint8_t qos = 0);
@@ -34,4 +36,5 @@ private:
     AsyncMqttClient _client;
     MessageCb       _msgCb  = nullptr;
     uint32_t        _lastReconnect = 0;
+    volatile uint32_t _connectCount = 0;
 };

@@ -9,6 +9,15 @@ ApiClient::ApiClient(AppState& state, TimeService& time)
 {}
 
 void ApiClient::update() {
+    if (_state.test.active) {
+        uint32_t now = millis();
+        _state.sensors.roomTemp    = _state.test.roomTemp;
+        _state.sensors.outsideTemp = _state.test.outsideTemp;
+        if (!isnan(_state.test.roomTemp))    _state.sensors.roomLastSeen    = now;
+        if (!isnan(_state.test.outsideTemp)) _state.sensors.outsideLastSeen = now;
+        return;
+    }
+
     if (!_state.status.wifiConnected) return;
 
     uint32_t now = millis();

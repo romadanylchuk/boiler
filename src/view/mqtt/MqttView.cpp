@@ -8,9 +8,10 @@ MqttView* MqttView::_instance = nullptr;
 //  Constructor / begin
 // ─────────────────────────────────────────────────────────────────────────────
 
-MqttView::MqttView(AppState& state, MqttService& mqtt)
+MqttView::MqttView(AppState& state, MqttService& mqtt, BoilerLogic& logic)
     : _state(state)
     , _mqtt(mqtt)
+    , _logic(logic)
 {}
 
 void MqttView::begin() {
@@ -20,26 +21,64 @@ void MqttView::begin() {
 }
 
 void MqttView::update() {
+    applyPendingCommands();
+
     if (!_mqtt.connected()) return;
 
-    // Publish HA discovery once after connect
-    if (!_discoveryPublished) {
-        publishDiscovery();
-        // Subscribe to command topics
-        _mqtt.subscribe("boiler/set/mode",        1);
-        _mqtt.subscribe("boiler/set/ha_disable",  1);
-        _mqtt.subscribe("boiler/set/flow_sp",     1);
-        _mqtt.subscribe("boiler/set/return_sp",   1);
-        _mqtt.subscribe("boiler/set/room_sp",     1);
-        _discoveryPublished = true;
+    // New broker session (first connect or reconnect): clean session drops
+    // subscriptions, so discovery + subscribe must be redone every time
+    uint32_t session = _mqtt.connectCount();
+    if (session != _sessionSeen) {
+        _sessionSeen = session;
+        onNewSession();
     }
 
     uint32_t now = millis();
-    if (now - _lastPublish >= PUBLISH_INTERVAL_MS) {
+    if (_publishNow || now - _lastPublish >= PUBLISH_INTERVAL_MS) {
+        _publishNow  = false;
         _lastPublish = now;
         publishState();
         publishAlarms();
     }
+}
+
+void MqttView::onNewSession() {
+    publishDiscovery();
+    _mqtt.subscribe("boiler/set/mode",        1);
+    _mqtt.subscribe("boiler/set/ha_disable",  1);
+    _mqtt.subscribe("boiler/set/flow_sp",     1);
+    _mqtt.subscribe("boiler/set/return_sp",   1);
+    _mqtt.subscribe("boiler/set/room_sp",     1);
+
+    // Forget cached values so the full state is republished right away
+    _lastFlowTemp = _lastReturnTemp = _lastRoomTemp = _lastOutsideTemp = -999;
+    _lastMode   = 255;
+    _lastHeater = !_state.relays.heaterOn;
+    _lastPump   = !_state.relays.pumpOn;
+    _lastAlarms = 0xFFFF;
+    _publishNow = true;
+}
+
+void MqttView::applyPendingCommands() {
+    portENTER_CRITICAL(&_pendingMux);
+    PendingCmds cmd = _pending;
+    _pending = PendingCmds{};
+    portEXIT_CRITICAL(&_pendingMux);
+
+    bool any = false;
+    if (cmd.mode >= 0) {
+        _logic.setMode(static_cast<SystemMode>(cmd.mode));  // safe transition (pump post-run etc.)
+        any = true;
+    }
+    if (cmd.haDisable >= 0) {
+        _logic.setHaRemoteDisable(cmd.haDisable == 1);
+        any = true;
+    }
+    if (cmd.flowSp   >= 0) { _state.config.flowSetpoint   = (uint8_t)cmd.flowSp;   any = true; }
+    if (cmd.returnSp >= 0) { _state.config.returnSetpoint = (uint8_t)cmd.returnSp; any = true; }
+    if (cmd.roomSp   >= 0) { _state.config.roomSetpoint   = (uint8_t)cmd.roomSp;   any = true; }
+
+    if (any) _publishNow = true;  // echo new state to HA without waiting 5 s
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -367,35 +406,37 @@ template bool MqttView::publishIfChanged<uint8_t>(const char*, uint8_t&, uint8_t
 void MqttView::onMessage(const char* topic, const char* payload) {
     if (!_instance) return;
     MqttView& self = *_instance;
-    AppState& state = self._state;
 
+    // Parse here, apply later in the main loop (see applyPendingCommands)
+    PendingCmds cmd;
     if (strcmp(topic, "boiler/set/mode") == 0) {
-        SystemMode mode = SystemMode::OFF;
-        if (strcmp(payload, "on") == 0)         mode = SystemMode::ON;
-        else if (strcmp(payload, "antifreeze") == 0) mode = SystemMode::ANTIFREEZE;
-        state.status.mode = mode;
-        Serial.printf("[MqttView] Mode set to: %s\n", payload);
+        if      (strcmp(payload, "off") == 0)        cmd.mode = (int8_t)SystemMode::OFF;
+        else if (strcmp(payload, "on") == 0)         cmd.mode = (int8_t)SystemMode::ON;
+        else if (strcmp(payload, "antifreeze") == 0) cmd.mode = (int8_t)SystemMode::ANTIFREEZE;
+        else { Serial.printf("[MqttView] Unknown mode: %s\n", payload); return; }
 
     } else if (strcmp(topic, "boiler/set/ha_disable") == 0) {
-        state.status.haRemoteDisable = (strcmp(payload, "ON") == 0);
-        Serial.printf("[MqttView] HA disable: %s\n", payload);
+        cmd.haDisable = (strcmp(payload, "ON") == 0) ? 1 : 0;
 
     } else if (strcmp(topic, "boiler/set/flow_sp") == 0) {
         int val = atoi(payload);
-        if (val >= 20 && val <= 65) {
-            state.config.flowSetpoint = (uint8_t)val;
-        }
+        if (val >= 20 && val <= 65) cmd.flowSp = val;
 
     } else if (strcmp(topic, "boiler/set/return_sp") == 0) {
         int val = atoi(payload);
-        if (val >= 20 && val <= 65) {
-            state.config.returnSetpoint = (uint8_t)val;
-        }
+        if (val >= 20 && val <= 65) cmd.returnSp = val;
 
     } else if (strcmp(topic, "boiler/set/room_sp") == 0) {
         int val = atoi(payload);
-        if (val >= 5 && val <= 30) {
-            state.config.roomSetpoint = (uint8_t)val;
-        }
+        if (val >= 5 && val <= 30) cmd.roomSp = val;
     }
+    Serial.printf("[MqttView] Command %s = %s\n", topic, payload);
+
+    portENTER_CRITICAL(&self._pendingMux);
+    if (cmd.mode      >= 0) self._pending.mode      = cmd.mode;
+    if (cmd.haDisable >= 0) self._pending.haDisable = cmd.haDisable;
+    if (cmd.flowSp    >= 0) self._pending.flowSp    = cmd.flowSp;
+    if (cmd.returnSp  >= 0) self._pending.returnSp  = cmd.returnSp;
+    if (cmd.roomSp    >= 0) self._pending.roomSp    = cmd.roomSp;
+    portEXIT_CRITICAL(&self._pendingMux);
 }

@@ -1,69 +1,52 @@
 #include "ButtonReader.h"
+#include <Wire.h>
 #include "../model/pins.h"
-
-ButtonReader* ButtonReader::_instance = nullptr;
 
 ButtonReader::ButtonReader(AppState& state)
     : _state(state)
-    , _pcf(I2C_ADDR_PCF8574)
 {}
 
-void IRAM_ATTR ButtonReader::onInterrupt() {
-    if (_instance) {
-        _instance->_intFlag = true;
-    }
-}
-
 void ButtonReader::begin() {
-    _instance = this;
+    // PCF8574 is quasi-bidirectional: writing 1 enables the weak pull-up,
+    // so the pin works as an input. Buttons pull pins to GND when pressed.
+    Wire.beginTransmission(I2C_ADDR_PCF8574);
+    Wire.write(0xFF);
+    bool ok = Wire.endTransmission() == 0;
 
-    _pcf.begin();
-    for (uint8_t i = 0; i < 5; i++) _pcf.pinMode(i, INPUT);
-    _lastState = 0xFF;
-
-    memset(_lastPress, 0, sizeof(_lastPress));
+    _stable = _candidate = BTN_MASK;
+    _candSince = _lastPoll = millis();
     _pending = ButtonEvent::NONE;
 
-    // Configure INT pin (active LOW, pulled up externally on the board)
-    pinMode(PIN_PCF_INT, INPUT);
-    attachInterrupt(digitalPinToInterrupt(PIN_PCF_INT), onInterrupt, FALLING);
-
-    Serial.println("[ButtonReader] PCF8574 initialized, INT on GPIO34");
+    Serial.printf("[ButtonReader] PCF8574 %s, polling every %lu ms\n",
+                  ok ? "initialized" : "NOT FOUND", (unsigned long)POLL_MS);
 }
 
 void ButtonReader::update() {
-    if (_intFlag) {
-        _intFlag = false;
-        readPcf();
-    }
-}
-
-void ButtonReader::readPcf() {
-    _pcf.readBuffer();
-    uint8_t current = 0;
-    for (uint8_t i = 0; i < 5; i++) {
-        if (_pcf.digitalRead(i) == HIGH) current |= (1 << i);
-    }
-
-    // Detect falling edges (button press = pin goes LOW)
-    uint8_t pressed = (_lastState & ~current) & 0x1F; // mask to P0-P4 only
-    _lastState = current;
-
-    if (pressed == 0) return;
-
     uint32_t now = millis();
+    if (now - _lastPoll < POLL_MS) return;
+    _lastPoll = now;
+
+    if (Wire.requestFrom((uint8_t)I2C_ADDR_PCF8574, (uint8_t)1) != 1) return;  // bus error → skip
+    uint8_t raw = Wire.read() & BTN_MASK;
+
+    // Debounce: accept a new state only after it has been stable for DEBOUNCE_MS
+    if (raw != _candidate) {
+        _candidate = raw;
+        _candSince = now;
+        return;
+    }
+    if (now - _candSince < DEBOUNCE_MS || raw == _stable) return;
+
+    uint8_t pressed = _stable & ~raw;  // 1→0 transitions = press
+    _stable = raw;
 
     for (uint8_t pin = 0; pin < 5; pin++) {
-        if (pressed & (1 << pin)) {
-            if (isDebounced(pin)) {
-                _lastPress[pin] = now;
-                ButtonEvent ev = mapPinToEvent(pin);
-                if (ev != ButtonEvent::NONE) {
-                    _pending = ev;
-                    Serial.printf("[ButtonReader] Button event: %d\n", (int)ev);
-                }
-            }
-        }
+        if (!(pressed & (1 << pin))) continue;
+        ButtonEvent ev = mapPinToEvent(pin);
+        if (ev == ButtonEvent::NONE) continue;
+        _pending = ev;
+        _state.lastHwButton = static_cast<uint8_t>(ev);
+        Serial.printf("[ButtonReader] Button event: %d\n", (int)ev);
     }
 }
 
@@ -76,10 +59,6 @@ ButtonEvent ButtonReader::mapPinToEvent(uint8_t pin) const {
         case BTN_PIN_SETTINGS: return ButtonEvent::SETTINGS;
         default:               return ButtonEvent::NONE;
     }
-}
-
-bool ButtonReader::isDebounced(uint8_t pin) const {
-    return (millis() - _lastPress[pin]) >= DEBOUNCE_MS;
 }
 
 ButtonEvent ButtonReader::consume() {

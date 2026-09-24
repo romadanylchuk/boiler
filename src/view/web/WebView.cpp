@@ -63,6 +63,12 @@ void WebView::begin() {
         Serial.printf("[WebView] Generated API token: %s\n", _state.config.apiToken);
     }
 
+    // CORS headers — allow requests from any origin (test runner, local tools)
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin",  "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers",
+                                         "Authorization, Content-Type, Cookie");
+
     setupRoutes();
     _server.begin();
     Serial.println("[WebView] HTTP server started on port 80");
@@ -130,6 +136,16 @@ void WebView::setupRoutes() {
         }
     ));
 
+    // ── Test mode (admin session required) ────────────────────────────────────
+    _server.addHandler(new AsyncCallbackJsonWebHandler(
+        "/api/test",
+        [this](AsyncWebServerRequest* req, JsonVariant& body) {
+            handleApiTest(req, body);
+        }
+    ));
+    _server.on("/api/test", HTTP_GET,
+        [this](AsyncWebServerRequest* req) { handleApiTestGet(req); });
+
     // ── Public status endpoint (no auth) — lets the SPA detect first boot ───────
     _server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* req) {
         String json = "{\"setupComplete\":";
@@ -144,6 +160,11 @@ void WebView::setupRoutes() {
     _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
     _server.onNotFound([](AsyncWebServerRequest* req) {
+        // Handle CORS preflight from test runner or external tools
+        if (req->method() == HTTP_OPTIONS) {
+            req->send(200);
+            return;
+        }
         // Serve index.html for any unknown path so the SPA router handles it.
         // If LittleFS files were never uploaded, show a plain-text hint.
         if (LittleFS.exists("/index.html")) {
@@ -304,9 +325,15 @@ void WebView::handleLogin(AsyncWebServerRequest* req) {
     cookie += sess->token;
     cookie += "; Path=/; HttpOnly; SameSite=Strict";
 
-    AsyncWebServerResponse* resp = req->beginResponse(200, "application/json",
-        "{\"ok\":true,\"role\":\"" +
-        String(role == WebRole::ADMIN ? "admin" : "operator") + "\"}");
+    // Include session token in body so the test runner (cross-origin) can use it
+    // without relying on cookie jar (which is blocked for file:// origins).
+    String body = "{\"ok\":true,\"role\":\"";
+    body += (role == WebRole::ADMIN ? "admin" : "operator");
+    body += "\",\"sid\":\"";
+    body += sess->token;
+    body += "\"}";
+
+    AsyncWebServerResponse* resp = req->beginResponse(200, "application/json", body);
     resp->addHeader("Set-Cookie", cookie);
     req->send(resp);
 }
@@ -356,6 +383,9 @@ void WebView::handleApiState(AsyncWebServerRequest* req) {
 
     JsonDocument doc;
     buildStateJson(doc);
+    doc["testMode"]     = _state.test.active;
+    doc["lastHwButton"] = _state.lastHwButton;
+    _state.lastHwButton = 0;  // consume — next poll gets 0 unless a new press happened
     sendJson(req, doc);
 }
 
@@ -457,6 +487,7 @@ void WebView::handleApiConfigSet(AsyncWebServerRequest* req, JsonVariant& body) 
     if (obj.containsKey("pumpPrePostDelaySec"))    { cfg.pumpPrePostDelaySec    = (uint16_t)constrain((int)obj["pumpPrePostDelaySec"],    30, 120);  changed = true; }
     if (obj.containsKey("standbyPumpPeriodMin"))   { cfg.standbyPumpPeriodMin   = (uint16_t)constrain((int)obj["standbyPumpPeriodMin"],   30, 180);  changed = true; }
     if (obj.containsKey("standbyPumpDurationMin")) { cfg.standbyPumpDurationMin = (uint8_t)constrain((int)obj["standbyPumpDurationMin"],  1, 5);     changed = true; }
+    if (obj.containsKey("minHeaterOffSec"))        { cfg.minHeaterOffSec        = (uint16_t)constrain((int)obj["minHeaterOffSec"],        60, 180);  changed = true; }
 
     // WiFi
     if (obj.containsKey("wifiSsid")) { strlcpy(cfg.wifiSsid, obj["wifiSsid"] | "", sizeof(cfg.wifiSsid)); changed = true; }
@@ -796,6 +827,7 @@ void WebView::buildConfigJson(JsonDocument& doc) const {
     doc["pumpPrePostDelaySec"]    = cfg.pumpPrePostDelaySec;
     doc["standbyPumpPeriodMin"]   = cfg.standbyPumpPeriodMin;
     doc["standbyPumpDurationMin"] = cfg.standbyPumpDurationMin;
+    doc["minHeaterOffSec"]        = cfg.minHeaterOffSec;
 
     doc["thermostatMode"] = (cfg.thermostatMode == ThermostatContact::NORMAL_CLOSED) ? "NC" : "NO";
 
@@ -850,4 +882,74 @@ void WebView::buildConfigJson(JsonDocument& doc) const {
     doc["setupComplete"] = cfg.setupComplete;
     // Expose API token for admin
     doc["apiToken"] = cfg.apiToken;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  API: Test mode
+// ─────────────────────────────────────────────────────────────────────────────
+
+void WebView::handleApiTest(AsyncWebServerRequest* req, JsonVariant& body) {
+    WebRole role = authenticateSession(req);
+    if (role != WebRole::ADMIN) { sendUnauthorized(req); return; }
+
+    if (!body.is<JsonObject>()) {
+        req->send(400, "application/json", "{\"error\":\"Expected JSON object\"}");
+        return;
+    }
+
+    JsonObject obj = body.as<JsonObject>();
+    TestState& t = _state.test;
+
+    if (obj.containsKey("active"))
+        t.active = obj["active"].as<bool>();
+
+    // Helper: set float field from JSON, treating JSON null as NAN
+    auto setTemp = [&](const char* key, float& field) {
+        if (!obj.containsKey(key)) return;
+        JsonVariant v = obj[key];
+        field = v.isNull() ? NAN : v.as<float>();
+    };
+    setTemp("flowTemp",    t.flowTemp);
+    setTemp("returnTemp",  t.returnTemp);
+    setTemp("roomTemp",    t.roomTemp);
+    setTemp("outsideTemp", t.outsideTemp);
+
+    if (obj.containsKey("flowFault"))          t.flowFault          = obj["flowFault"].as<bool>();
+    if (obj.containsKey("returnFault"))        t.returnFault        = obj["returnFault"].as<bool>();
+    if (obj.containsKey("roomSensorLost"))     t.roomSensorLost     = obj["roomSensorLost"].as<bool>();
+    if (obj.containsKey("outsideSensorLost"))  t.outsideSensorLost  = obj["outsideSensorLost"].as<bool>();
+    if (obj.containsKey("thermostatOverride")) t.thermostatOverride = obj["thermostatOverride"].as<bool>();
+    if (obj.containsKey("thermostatAllow"))    t.thermostatAllow    = obj["thermostatAllow"].as<bool>();
+
+    JsonDocument doc;
+    buildTestJson(doc);
+    sendJson(req, doc);
+}
+
+void WebView::handleApiTestGet(AsyncWebServerRequest* req) {
+    WebRole role = authenticateSession(req);
+    if (role != WebRole::ADMIN) { sendUnauthorized(req); return; }
+
+    JsonDocument doc;
+    buildTestJson(doc);
+    sendJson(req, doc);
+}
+
+void WebView::buildTestJson(JsonDocument& doc) const {
+    const TestState& t = _state.test;
+    doc["active"] = t.active;
+    if (isnan(t.flowTemp))    doc["flowTemp"]    = nullptr;
+    else                      doc["flowTemp"]    = t.flowTemp;
+    if (isnan(t.returnTemp))  doc["returnTemp"]  = nullptr;
+    else                      doc["returnTemp"]  = t.returnTemp;
+    if (isnan(t.roomTemp))    doc["roomTemp"]    = nullptr;
+    else                      doc["roomTemp"]    = t.roomTemp;
+    if (isnan(t.outsideTemp)) doc["outsideTemp"] = nullptr;
+    else                      doc["outsideTemp"] = t.outsideTemp;
+    doc["flowFault"]          = t.flowFault;
+    doc["returnFault"]        = t.returnFault;
+    doc["roomSensorLost"]     = t.roomSensorLost;
+    doc["outsideSensorLost"]  = t.outsideSensorLost;
+    doc["thermostatOverride"] = t.thermostatOverride;
+    doc["thermostatAllow"]    = t.thermostatAllow;
 }

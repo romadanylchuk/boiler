@@ -47,6 +47,10 @@ private:
     // Admin-gated actions: verify password, factory-reset
     void handleAdminAction(AsyncWebServerRequest* req, JsonVariant& body);
 
+    // Test mode (admin session required)
+    void handleApiTest(AsyncWebServerRequest* req, JsonVariant& body);
+    void handleApiTestGet(AsyncWebServerRequest* req);
+
     // ── Auth helpers ──────────────────────────────────────────────────────────
     WebRole  authenticateToken(AsyncWebServerRequest* req) const;
     WebRole  authenticateSession(AsyncWebServerRequest* req) const;
@@ -58,6 +62,7 @@ private:
     void buildStateJson(JsonDocument& doc) const;
     void buildLogJson(JsonDocument& doc) const;
     void buildConfigJson(JsonDocument& doc) const;
+    void buildTestJson(JsonDocument& doc) const;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     bool checkAdminPassword(const char* pass) const;

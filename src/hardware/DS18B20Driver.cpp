@@ -33,6 +33,17 @@ void DS18B20Driver::begin() {
 }
 
 void DS18B20Driver::update() {
+    if (_state.test.active) {
+        _state.sensors.flowSensorFault   = _state.test.flowFault;
+        _state.sensors.returnSensorFault = _state.test.returnFault;
+        _state.sensors.flowTemp   = _state.test.flowFault   ? NAN : _state.test.flowTemp;
+        _state.sensors.returnTemp = _state.test.returnFault ? NAN : _state.test.returnTemp;
+        uint32_t now = millis();
+        if (!_state.sensors.flowSensorFault)   _state.sensors.flowLastSeen   = now;
+        if (!_state.sensors.returnSensorFault) _state.sensors.returnLastSeen = now;
+        return;
+    }
+
     uint32_t now = millis();
 
     if (_convPending) {

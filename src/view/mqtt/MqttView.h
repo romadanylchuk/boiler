@@ -7,14 +7,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  MqttView — Home Assistant MQTT integration
 //
-//  On connect:  publishes HA autodiscovery configs
+//  On connect:  publishes HA autodiscovery configs + subscribes (every reconnect)
 //  Each loop:   publishes changed state (sensors, relays, alarms)
-//  Subscribes:  command topics → BoilerLogic / Config
+//  Subscribes:  command topics → queued, applied in loop → BoilerLogic / Config
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MqttView {
 public:
-    MqttView(AppState& state, MqttService& mqtt);
+    MqttView(AppState& state, MqttService& mqtt, BoilerLogic& logic);
     void begin();
     void update();  // call from loop
 
@@ -48,13 +48,29 @@ private:
     // ── Alarm publishing ──────────────────────────────────────────────────────
     void publishAlarmEvent(AlarmFlag flag, const char* message);
 
-    // ── Command handler ───────────────────────────────────────────────────────
+    // ── Command handling ──────────────────────────────────────────────────────
+    // onMessage runs in the AsyncTCP task — it only queues; update() applies
     static void onMessage(const char* topic, const char* payload);
+    void applyPendingCommands();
+    void onNewSession();
 
     AppState&    _state;
     MqttService& _mqtt;
+    BoilerLogic& _logic;
 
-    bool     _discoveryPublished = false;
+    // Commands received from MQTT, waiting for the main loop (-1 = none)
+    struct PendingCmds {
+        int8_t  mode      = -1;  // SystemMode
+        int8_t  haDisable = -1;  // 0 / 1
+        int16_t flowSp    = -1;
+        int16_t returnSp  = -1;
+        int16_t roomSp    = -1;
+    };
+    PendingCmds  _pending;
+    portMUX_TYPE _pendingMux = portMUX_INITIALIZER_UNLOCKED;
+
+    uint32_t _sessionSeen        = 0;      // MqttService::connectCount() last handled
+    bool     _publishNow         = false;
     uint32_t _lastPublish        = 0;
     uint16_t _lastAlarms         = 0xFFFF;  // force publish on start
 

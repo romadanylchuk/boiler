@@ -114,7 +114,8 @@ struct Config {
     uint16_t pumpPrePostDelay;    // 30–120
     uint16_t standbyPumpPeriodMin;// 30–180 (minutes)
     uint8_t  standbyPumpDurationMin; // 1–5
-    // min on/off times are fixed constants (3 min), not stored
+    uint16_t minHeaterOffSec;     // 60–180 (seconds)
+    // min heater ON time is a fixed constant (3 min), not stored
 
     // Hardware
     ThermostatContact thermostatMode;
@@ -316,7 +317,7 @@ boiler/
 │   │   ├── DS18B20Driver.cpp/.h
 │   │   ├── RelayDriver.cpp/.h
 │   │   ├── BuzzerDriver.cpp/.h
-│   │   └── ButtonReader.cpp/.h   (PCF8574 + INT)
+│   │   └── ButtonReader.cpp/.h   (PCF8574, I2C polling)
 │   ├── services/
 │   │   ├── BleScanner.cpp/.h     (NimBLE, IBS-TH2 parser)
 │   │   ├── ApiClient.cpp/.h      (HTTP poll for temp)

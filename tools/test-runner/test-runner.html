@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Boiler Test Runner</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f172a;color:#e2e8f0;font-size:14px;min-height:100vh}
+h2{font-size:18px;font-weight:600;color:#f1f5f9}
+h3{font-size:13px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+
+/* ── Layout ── */
+#app{display:flex;flex-direction:column;height:100vh}
+#header{background:#1e293b;border-bottom:1px solid #334155;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+#header h1{font-size:16px;font-weight:700;color:#f1f5f9;flex:1}
+#body{display:flex;flex:1;overflow:hidden}
+#left{width:280px;min-width:240px;border-right:1px solid #1e293b;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+#right{flex:1;overflow-y:auto;padding:12px}
+#connect-panel{padding:12px;border-bottom:1px solid #1e293b}
+#state-panel{padding:12px;flex:1;overflow-y:auto}
+#progress-bar-wrap{height:3px;background:#1e293b;flex-shrink:0}
+#progress-bar{height:3px;background:#3b82f6;width:0;transition:width .3s}
+
+/* ── Cards ── */
+.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin-bottom:10px}
+
+/* ── Forms ── */
+.field{margin-bottom:8px}
+.field label{display:block;font-size:11px;color:#64748b;margin-bottom:3px}
+.field input{width:100%;padding:5px 8px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px}
+.field input:focus{outline:none;border-color:#3b82f6}
+
+/* ── Buttons ── */
+.btn{padding:5px 12px;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;transition:opacity .15s}
+.btn:hover{opacity:.85} .btn:active{opacity:.7} .btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-primary{background:#1d4ed8;color:#dbeafe}
+.btn-green{background:#15803d;color:#bbf7d0}
+.btn-red{background:#b91c1c;color:#fecaca}
+.btn-gray{background:#374151;color:#d1d5db}
+.btn-sm{padding:3px 8px;font-size:11px}
+#run-all{background:#1d4ed8;color:#dbeafe;padding:6px 14px;font-size:13px;font-weight:600}
+#run-auto{background:#15803d;color:#bbf7d0;padding:6px 14px;font-size:13px}
+#run-hw{background:#7c3aed;color:#ddd6fe;padding:6px 14px;font-size:13px}
+#btn-abort{background:#991b1b;color:#fecaca;padding:6px 14px;font-size:13px}
+
+/* ── Status badge ── */
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+.badge-ok{background:#14532d;color:#86efac}
+.badge-err{background:#450a0a;color:#fca5a5}
+.badge-gray{background:#1e293b;color:#94a3b8}
+.badge-warn{background:#78350f;color:#fde68a}
+
+/* ── Connection status ── */
+#conn-status{font-size:12px}
+
+/* ── Test list ── */
+.group-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:#0f172a;border-radius:6px;cursor:pointer;margin-bottom:4px;user-select:none}
+.group-header:hover{background:#1e293b}
+.group-title{font-size:13px;font-weight:600;color:#94a3b8}
+.group-stats{font-size:11px;color:#64748b;display:flex;gap:6px}
+.group-body{margin-bottom:8px}
+
+.test-row{display:flex;align-items:flex-start;padding:6px 8px;border-radius:4px;gap:8px;border-left:3px solid transparent;margin-bottom:2px}
+.test-row.pass{border-left-color:#22c55e;background:#052e16}
+.test-row.fail{border-left-color:#ef4444;background:#450a0a}
+.test-row.skip{border-left-color:#475569;background:#1e293b;opacity:.6}
+.test-row.running{border-left-color:#3b82f6;background:#172554;animation:pulse 1s infinite}
+.test-row.pending{border-left-color:#374151;background:transparent}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.7}}
+
+.test-icon{font-size:14px;width:18px;flex-shrink:0;margin-top:1px}
+.test-info{flex:1;min-width:0}
+.test-name{font-size:13px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.test-id{font-size:10px;color:#64748b;font-family:monospace}
+.test-msg{font-size:11px;color:#94a3b8;margin-top:2px;white-space:pre-wrap;word-break:break-all}
+.test-time{font-size:11px;color:#475569;white-space:nowrap;flex-shrink:0}
+.test-manual-badge{font-size:10px;background:#4c1d95;color:#c4b5fd;padding:1px 5px;border-radius:3px}
+
+/* ── Manual prompt ── */
+#manual-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}
+#manual-overlay.show{display:flex}
+#manual-box{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:20px;max-width:420px;width:90%;text-align:center}
+#manual-box h2{margin-bottom:10px;font-size:16px}
+#manual-prompt{font-size:14px;color:#94a3b8;margin-bottom:14px;line-height:1.5}
+#manual-countdown{font-size:32px;font-weight:700;color:#f59e0b;margin-bottom:16px}
+#manual-detect{font-size:12px;color:#64748b;margin-bottom:16px;min-height:18px}
+.manual-btns{display:flex;gap:10px;justify-content:center}
+
+/* ── Live state ── */
+.state-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #1e293b;font-size:12px}
+.state-row:last-child{border-bottom:none}
+.state-key{color:#64748b}
+.state-val{color:#f1f5f9;font-weight:500}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.dot-on{background:#22c55e}
+.dot-off{background:#475569}
+.dot-warn{background:#f59e0b}
+.dot-err{background:#ef4444}
+
+/* ── Log ── */
+#log-area{font-size:11px;font-family:monospace;background:#0a0f1a;border:1px solid #1e293b;border-radius:4px;padding:8px;height:120px;overflow-y:auto;margin-top:8px;color:#64748b}
+#log-area .l-info{color:#64748b}
+#log-area .l-ok{color:#22c55e}
+#log-area .l-err{color:#ef4444}
+#log-area .l-warn{color:#f59e0b}
+#log-area .l-wait{color:#3b82f6}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <h1>⚡ Boiler Test Runner</h1>
+    <span id="conn-status"><span class="badge badge-gray">Disconnected</span></span>
+    <button class="btn btn-gray btn-sm" id="btn-settings" onclick="toggleSettings()">Settings</button>
+  </div>
+
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+
+  <!-- Main body -->
+  <div id="body">
+
+    <!-- Left panel -->
+    <div id="left">
+
+      <!-- Connection -->
+      <div id="connect-panel">
+        <div id="settings-form">
+          <div class="field"><label>Device URL</label>
+            <input id="inp-url" value="http://boiler.local" placeholder="http://192.168.1.x"></div>
+          <div class="field"><label>Admin Username</label>
+            <input id="inp-user" value="admin"></div>
+          <div class="field"><label>Admin Password</label>
+            <input id="inp-pass" type="password" placeholder="••••••••"></div>
+          <div class="field"><label>API Token</label>
+            <input id="inp-token" placeholder="64-char hex token"></div>
+          <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="connect()">Connect</button>
+        </div>
+        <div id="run-controls" style="display:none">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn" id="run-all"  onclick="runAll()"  disabled>Run All</button>
+            <button class="btn" id="run-auto" onclick="runAuto()" disabled>Automated</button>
+            <button class="btn" id="run-hw"   onclick="runHw()"   disabled>Hardware</button>
+            <button class="btn" id="btn-abort" onclick="abort()" disabled>Stop</button>
+          </div>
+          <div id="run-summary" style="font-size:11px;color:#64748b"></div>
+        </div>
+      </div>
+
+      <!-- Live state -->
+      <div id="state-panel">
+        <h3>Live Device State</h3>
+        <div id="live-state"><div style="color:#475569;font-size:12px">Not connected</div></div>
+        <div id="log-area"></div>
+      </div>
+    </div>
+
+    <!-- Right panel: test list -->
+    <div id="right">
+      <div id="test-list"><div style="color:#475569;padding:20px;text-align:center">Connect to device to begin</div></div>
+    </div>
+
+  </div><!-- /body -->
+</div><!-- /app -->
+
+<!-- Manual test overlay -->
+<div id="manual-overlay">
+  <div id="manual-box">
+    <h2 id="manual-title">Manual Test</h2>
+    <div id="manual-prompt"></div>
+    <div id="manual-countdown"></div>
+    <div id="manual-detect"></div>
+    <div class="manual-btns">
+      <button class="btn btn-green" onclick="manualPass()">&#10003; Pass</button>
+      <button class="btn btn-red"   onclick="manualFail()">&#10007; Fail</button>
+      <button class="btn btn-gray"  onclick="manualSkip()">Skip</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Device Client
+// ═══════════════════════════════════════════════════════════════════════════
+class DeviceClient {
+  constructor(url, token, sid) {
+    this.url   = url.replace(/\/$/, '');
+    this.token = token;
+    this.sid   = sid; // raw session token from login response
+  }
+
+  _hdrsBearer() {
+    return { 'Authorization': 'Bearer ' + this.token };
+  }
+  _hdrsSid() {
+    // Send session cookie as a plain header so this works cross-origin (file://)
+    return { 'Cookie': 'sid=' + this.sid, 'Content-Type': 'application/json' };
+  }
+  _hdrsJson() {
+    return { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' };
+  }
+
+  async getState() {
+    const r = await fetch(this.url + '/api/state', { headers: this._hdrsBearer() });
+    if (!r.ok) throw new Error('GET /api/state → ' + r.status);
+    return r.json();
+  }
+
+  async command(body) {
+    const r = await fetch(this.url + '/api/command', {
+      method: 'POST', headers: this._hdrsJson(), body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('POST /api/command → ' + r.status);
+    return r.json();
+  }
+
+  async inject(body) {
+    const r = await fetch(this.url + '/api/test', {
+      method: 'POST', headers: this._hdrsSid(), body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('POST /api/test → ' + r.status);
+    return r.json();
+  }
+
+  async getTest() {
+    const r = await fetch(this.url + '/api/test', { headers: { 'Cookie': 'sid=' + this.sid } });
+    if (!r.ok) throw new Error('GET /api/test → ' + r.status);
+    return r.json();
+  }
+
+  async config(body) {
+    const r = await fetch(this.url + '/api/config', {
+      method: 'POST', headers: this._hdrsSid(), body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('POST /api/config → ' + r.status);
+    return r.json();
+  }
+
+  static async login(url, user, pass) {
+    const r = await fetch(url.replace(/\/$/, '') + '/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ username: user, password: pass })
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || 'Login failed (' + r.status + ')');
+    }
+    const d = await r.json();
+    if (!d.sid) throw new Error('Login response missing sid — firmware may need update');
+    return d.sid;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Test Context
+// ═══════════════════════════════════════════════════════════════════════════
+let MIN_OFF_MS = 180 * 1000; // updated from config.minHeaterOffSec at run start
+
+class AssertError extends Error { constructor(m) { super(m); this.name = 'AssertError'; } }
+class AbortError  extends Error { constructor()  { super('Aborted'); this.name = 'AbortError'; } }
+
+class TestContext {
+  constructor(client, runner) {
+    this.client  = client;
+    this.runner  = runner;
+  }
+
+  assert(cond, msg) {
+    if (!cond) throw new AssertError(msg || 'Assertion failed');
+  }
+
+  async getState() {
+    const s = await this.client.getState();
+    this.runner._updateLiveState(s);
+    // Track heater transitions for min-off timing
+    if (this.runner._lastHeaterOn && !s.relays.heater) {
+      this.runner.lastHeaterStopAt = Date.now();
+    }
+    this.runner._lastHeaterOn = s.relays.heater;
+    return s;
+  }
+
+  async command(body)  { return this.client.command(body); }
+  async inject(body)   { return this.client.inject(body); }
+  async config(body)   { return this.client.config(body); }
+
+  async waitMs(ms, label) {
+    if (this.runner.aborted) throw new AbortError();
+    if (label) this.runner._log(label, 'wait');
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (this.runner.aborted) throw new AbortError();
+      const rem = Math.ceil((end - Date.now()) / 1000);
+      this.runner._setCurrentWait(rem > 0 ? `${label || 'Wait'}: ${rem}s` : '');
+      await new Promise(r => setTimeout(r, Math.min(500, end - Date.now())));
+    }
+    this.runner._setCurrentWait('');
+  }
+
+  async waitForState(pred, timeoutMs, failMsg) {
+    if (this.runner.aborted) throw new AbortError();
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (this.runner.aborted) throw new AbortError();
+      const s = await this.getState();
+      if (pred(s)) return s;
+      const rem = Math.ceil((deadline - Date.now()) / 1000);
+      this.runner._setCurrentWait(failMsg ? `${failMsg}: ${rem}s` : `Polling: ${rem}s`);
+      await new Promise(r => setTimeout(r, 500));
+    }
+    this.runner._setCurrentWait('');
+    throw new AssertError(failMsg ? `Timeout: ${failMsg}` : 'Condition not met within timeout');
+  }
+
+  async waitForPhase(phase, timeoutMs = 3000) {
+    return this.waitForState(s => s.status.phase === phase, timeoutMs,
+      `Waiting for phase=${phase}`);
+  }
+
+  async waitForMinOff() {
+    const rem = () => Math.max(0, MIN_OFF_MS - (Date.now() - this.runner.lastHeaterStopAt));
+    if (rem() <= 0) return;
+    this.runner._log(`Waiting for min-off time: ${Math.ceil(rem()/1000)}s`, 'wait');
+    await this.waitMs(rem(), 'Min-off wait');
+  }
+
+  // Ensure heater is in HEATING state; handles full start sequence including
+  // waitForMinOff → start → pump_pre (30s) → heating.
+  // pumpDelaySec should match the configured pumpPrePostDelaySec.
+  async startHeater(pumpDelaySec) {
+    await this.waitForMinOff();
+    await this.inject({ active: true, flowTemp: 35, returnTemp: 30,
+                        flowFault: false, returnFault: false,
+                        roomTemp: null, outsideTemp: null,
+                        thermostatOverride: true, thermostatAllow: true,
+                        roomSensorLost: false, outsideSensorLost: false });
+    await this.command({ cmd: 'set_mode', mode: 'on' });
+    // Wait for PUMP_PRE
+    await this.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting pump_pre');
+    // Wait for full pre-delay + buffer
+    await this.waitMs((pumpDelaySec + 2) * 1000, 'Pre-delay');
+    const s = await this.waitForState(s => s.relays.heater, 3000, 'Waiting heater ON');
+    this.assert(s.relays.heater, 'Heater should be ON after pre-delay');
+    return s;
+  }
+
+  async manualTest(title, prompt, autoDetect, timeoutMs = 30000) {
+    return this.runner._runManualPrompt(title, prompt, autoDetect, timeoutMs);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Test Definitions
+// ═══════════════════════════════════════════════════════════════════════════
+function makeTests(pumpDelaySec) {
+  const PD = pumpDelaySec;
+  return [
+
+  // ── Group A: Instant checks ─────────────────────────────────────────────
+  { id:'A01', group:'A', name:'OFF mode — relays idle', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ active:true, flowTemp:35, returnTemp:30, flowFault:false, returnFault:false,
+                         roomTemp:null, outsideTemp:null, thermostatOverride:true, thermostatAllow:true,
+                         roomSensorLost:false, outsideSensorLost:false });
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.waitMs(500);
+      const s = await ctx.getState();
+      ctx.assert(!s.relays.heater,           'Heater must be OFF in OFF mode');
+      ctx.assert(!s.relays.pump,             'Pump must be OFF in OFF mode');
+      ctx.assert(s.status.phase === 'idle',  'Phase must be IDLE');
+    }},
+
+  { id:'A02', group:'A', name:'Warm flow blocks heater start', auto:true,
+    run: async (ctx) => {
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.inject({ flowTemp: 53 }); // 55 - 3 = 52 threshold, 53 > threshold
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.status.phase === 'idle', 'Phase must stay IDLE — flow above threshold');
+      ctx.assert(!s.relays.heater, 'Heater must be OFF');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'A03', group:'A', name:'Return gate closed blocks start', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowTemp:35, returnTemp:46 }); // return >= 45 setpoint
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.status.phase === 'idle', 'Phase must stay IDLE — return gate closed');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ returnTemp:30 });
+    }},
+
+  { id:'A04', group:'A', name:'HA remote disable blocks start', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowTemp:35, returnTemp:30 });
+      await ctx.command({ cmd:'ha_disable', disable:true });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.status.phase === 'idle', 'Phase must stay IDLE — HA disabled');
+      await ctx.command({ cmd:'ha_disable', disable:false });
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'A05', group:'A', name:'Room warm blocks start (room sensor)', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowTemp:35, returnTemp:30, roomTemp:22 }); // 22 >= 21-1=20
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.status.phase === 'idle', 'Phase must stay IDLE — room above threshold');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ roomTemp:null });
+    }},
+
+  { id:'A06', group:'A', name:'Thermostat BLOCK overrides blocks start', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowTemp:35, returnTemp:30, thermostatOverride:true, thermostatAllow:false });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.status.phase === 'idle', 'Phase must stay IDLE — thermostat blocking');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ thermostatAllow:true });
+    }},
+
+  { id:'A07', group:'A', name:'Flow sensor fault → alarm + blocks start', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowFault:true });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.alarms.flowSensorFault,  'FLOW_SENSOR_FAULT alarm must be set');
+      ctx.assert(s.status.phase === 'idle', 'Phase must stay IDLE');
+      ctx.assert(!s.relays.heater,          'Heater must be OFF');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'A08', group:'A', name:'Flow fault alarm clears on recovery', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowFault:false, flowTemp:35 });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(!s.alarms.flowSensorFault, 'FLOW_SENSOR_FAULT must be cleared');
+    }},
+
+  { id:'A09', group:'A', name:'Overheat alarm triggers at ≥80°C', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowTemp:82 });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.alarms.overheat, 'OVERHEAT alarm must be set (flow=82°C)');
+    }},
+
+  { id:'A10', group:'A', name:'Overheat alarm clears when flow drops', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowTemp:35 });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(!s.alarms.overheat, 'OVERHEAT must be cleared (flow=35°C)');
+    }},
+
+  { id:'A11', group:'A', name:'Return sensor fault → warning only (no stop)', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ returnFault:true });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.alarms.returnSensorFault, 'RETURN_SENSOR_FAULT alarm must be set');
+      ctx.assert(!s.alarms.flowSensorFault,  'FLOW_SENSOR_FAULT must NOT be set');
+    }},
+
+  { id:'A12', group:'A', name:'Return sensor fault alarm clears', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ returnFault:false, returnTemp:30 });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(!s.alarms.returnSensorFault, 'RETURN_SENSOR_FAULT must be cleared');
+    }},
+
+  { id:'A13', group:'A', name:'ROOM_SENSOR_LOST alarm', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ roomSensorLost:true });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.alarms.roomSensorLost, 'ROOM_SENSOR_LOST alarm must be set');
+      await ctx.inject({ roomSensorLost:false });
+    }},
+
+  { id:'A14', group:'A', name:'OUTSIDE_SENSOR_LOST alarm', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ outsideSensorLost:true });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.alarms.outsideSensorLost, 'OUTSIDE_SENSOR_LOST alarm must be set');
+      await ctx.inject({ outsideSensorLost:false });
+    }},
+
+  // ── Group B: Weather compensation ───────────────────────────────────────
+  { id:'B01', group:'B', name:'No curve → manual setpoints used', auto:true,
+    run: async (ctx) => {
+      await ctx.config({ curve:[], curveCount:0 });
+      await ctx.inject({ outsideTemp:null });
+      await ctx.waitMs(400);
+      const s = await ctx.getState();
+      ctx.assert(s.status.activeFlowSetpoint === 55,   'activeFlowSetpoint must be 55 (manual)');
+      ctx.assert(s.status.activeReturnSetpoint === 45, 'activeReturnSetpoint must be 45 (manual)');
+    }},
+
+  { id:'B02', group:'B', name:'Curve: outside below lowest point → clamp', auto:true,
+    run: async (ctx) => {
+      await ctx.config({ curve:[
+        {outsideTemp:-20, flowSetpoint:70, returnSetpoint:55},
+        {outsideTemp:15,  flowSetpoint:40, returnSetpoint:35}
+      ]});
+      await ctx.inject({ outsideTemp:-25 });
+      await ctx.waitMs(400);
+      const s = await ctx.getState();
+      ctx.assert(s.status.activeFlowSetpoint === 70,   `activeFlow must be 70 (clamped), got ${s.status.activeFlowSetpoint}`);
+      ctx.assert(s.status.activeReturnSetpoint === 55, `activeReturn must be 55 (clamped), got ${s.status.activeReturnSetpoint}`);
+    }},
+
+  { id:'B03', group:'B', name:'Curve: interpolation at midpoint', auto:true,
+    run: async (ctx) => {
+      // Curve already set from B02: (-20,70,55) → (15,40,35)
+      // At outside=-2.5: midpoint of [-20,15], flow=(70+40)/2=55, return=(55+35)/2=45
+      await ctx.inject({ outsideTemp:-2.5 });
+      await ctx.waitMs(400);
+      const s = await ctx.getState();
+      const fsp = s.status.activeFlowSetpoint;
+      const rsp = s.status.activeReturnSetpoint;
+      ctx.assert(Math.abs(fsp - 55) < 1,  `activeFlow must ≈55, got ${fsp}`);
+      ctx.assert(Math.abs(rsp - 45) < 1,  `activeReturn must ≈45, got ${rsp}`);
+    }},
+
+  { id:'B04', group:'B', name:'Curve: outside above highest point → clamp', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ outsideTemp:20 });
+      await ctx.waitMs(400);
+      const s = await ctx.getState();
+      ctx.assert(s.status.activeFlowSetpoint === 40,   `activeFlow must be 40 (clamped), got ${s.status.activeFlowSetpoint}`);
+      ctx.assert(s.status.activeReturnSetpoint === 35, `activeReturn must be 35 (clamped), got ${s.status.activeReturnSetpoint}`);
+    }},
+
+  { id:'B05', group:'B', name:'Curve: outside sensor NaN → manual fallback', auto:true,
+    run: async (ctx) => {
+      // Curve still set; no outside sensor
+      await ctx.inject({ outsideTemp:null });
+      await ctx.waitMs(400);
+      const s = await ctx.getState();
+      ctx.assert(s.status.activeFlowSetpoint === 55,   'Must fall back to manual flowSetpoint=55');
+      ctx.assert(s.status.activeReturnSetpoint === 45, 'Must fall back to manual returnSetpoint=45');
+      // Restore: clear curve
+      await ctx.config({ curve:[], curveCount:0 });
+    }},
+
+  // ── Group C: Full heater start cycle ────────────────────────────────────
+  { id:'C01', group:'C', name:'IDLE → PUMP_PRE on start conditions met', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ active:true, flowTemp:35, returnTemp:30, flowFault:false, returnFault:false,
+                         roomTemp:null, outsideTemp:null,
+                         thermostatOverride:true, thermostatAllow:true,
+                         roomSensorLost:false, outsideSensorLost:false });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      const s = await ctx.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting for PUMP_PRE');
+      ctx.assert(s.relays.pump,               'Pump must be ON in PUMP_PRE');
+      ctx.assert(!s.relays.heater,            'Heater must be OFF during pre-delay');
+      ctx.assert(s.status.phase === 'pump_pre','Phase must be PUMP_PRE');
+    }},
+
+  { id:'C02', group:'C', name:'PUMP_PRE → HEATING after pre-delay', auto:true,
+    run: async (ctx) => {
+      // Continuation of C01 — wait for pre-delay to complete
+      await ctx.waitMs((PD + 3) * 1000, `Pre-delay (${PD}s)`);
+      const s = await ctx.waitForState(s => s.relays.heater, 5000, 'Waiting for heater ON');
+      ctx.assert(s.relays.heater,               'Heater must be ON after pre-delay');
+      ctx.assert(s.relays.pump,                 'Pump must still be ON');
+      ctx.assert(s.status.phase === 'heating',  'Phase must be HEATING');
+    }},
+
+  { id:'C03', group:'C', name:'Stop on flow setpoint → PUMP_POST', auto:true,
+    run: async (ctx) => {
+      // Continuation of C02 — heater is running
+      await ctx.inject({ flowTemp:56 }); // 56 >= flowSetpoint=55
+      const s = await ctx.waitForState(s => !s.relays.heater, 3000, 'Waiting for heater OFF');
+      ctx.assert(!s.relays.heater,               'Heater must be OFF');
+      ctx.assert(s.relays.pump,                  'Pump must still be ON (post-delay)');
+      ctx.assert(s.status.phase === 'pump_post', 'Phase must be PUMP_POST');
+    }},
+
+  { id:'C04', group:'C', name:'Pump post-delay → IDLE', auto:true,
+    run: async (ctx) => {
+      // Continuation of C03 — wait for post-delay
+      await ctx.waitMs((PD + 3) * 1000, `Post-delay (${PD}s)`);
+      const s = await ctx.waitForState(s => s.status.phase === 'idle', 5000, 'Waiting for IDLE');
+      ctx.assert(!s.relays.pump,              'Pump must be OFF after post-delay');
+      ctx.assert(s.status.phase === 'idle',   'Phase must be IDLE');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ flowTemp:35 }); // reset
+    }},
+
+  // ── Group D: Pre-delay cancellations ────────────────────────────────────
+  { id:'D01', group:'D', name:'Cancel pre-delay: flow warms above threshold', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30, thermostatOverride:true, thermostatAllow:true,
+                         roomTemp:null, flowFault:false, returnFault:false });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting for PUMP_PRE');
+      await ctx.waitMs(1000); // brief time in pre-delay
+      await ctx.inject({ flowTemp:53 }); // > 55-3=52 threshold
+      const s = await ctx.waitForState(s => s.status.phase === 'pump_post', 5000, 'Waiting for PUMP_POST');
+      ctx.assert(!s.relays.heater,               'Heater must never have turned ON');
+      ctx.assert(s.status.phase === 'pump_post', 'Phase must be PUMP_POST');
+      await ctx.waitMs((PD + 3) * 1000, `Post-delay`);
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ flowTemp:35 });
+    }},
+
+  { id:'D02', group:'D', name:'Cancel pre-delay: HA disable', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30 });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting for PUMP_PRE');
+      await ctx.waitMs(1000);
+      await ctx.command({ cmd:'ha_disable', disable:true });
+      const s = await ctx.waitForState(s => s.status.phase === 'pump_post', 5000, 'Waiting for PUMP_POST');
+      ctx.assert(!s.relays.heater, 'Heater must never have turned ON');
+      await ctx.command({ cmd:'ha_disable', disable:false });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'D03', group:'D', name:'Cancel pre-delay: return gate closes', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30 });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting for PUMP_PRE');
+      await ctx.waitMs(1000);
+      await ctx.inject({ returnTemp:46 }); // >= returnSetpoint=45
+      const s = await ctx.waitForState(s => s.status.phase === 'pump_post', 5000, 'Waiting for PUMP_POST');
+      ctx.assert(!s.relays.heater, 'Heater must never have turned ON');
+      await ctx.inject({ returnTemp:30 });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'D04', group:'D', name:'Cancel pre-delay: room warms', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30, roomTemp:18 }); // room below threshold
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting for PUMP_PRE');
+      await ctx.waitMs(1000);
+      await ctx.inject({ roomTemp:22 }); // >= roomSetpoint=21
+      const s = await ctx.waitForState(s => s.status.phase === 'pump_post', 5000, 'Waiting for PUMP_POST');
+      ctx.assert(!s.relays.heater, 'Heater must never have turned ON');
+      await ctx.inject({ roomTemp:null });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'D05', group:'D', name:'Cancel pre-delay: thermostat opens', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30, thermostatOverride:true, thermostatAllow:true });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting for PUMP_PRE');
+      await ctx.waitMs(1000);
+      await ctx.inject({ thermostatAllow:false }); // thermostat opens → blocks
+      const s = await ctx.waitForState(s => s.status.phase === 'pump_post', 5000, 'Waiting for PUMP_POST');
+      ctx.assert(!s.relays.heater, 'Heater must never have turned ON');
+      await ctx.inject({ thermostatAllow:true });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  // ── Group E: Stop conditions during HEATING ─────────────────────────────
+  { id:'E01', group:'E', name:'Stop heating: room setpoint reached', auto:true,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.inject({ roomTemp:22 }); // >= roomSetpoint=21
+      const s = await ctx.waitForState(s => !s.relays.heater, 3000, 'Waiting for heater OFF');
+      ctx.assert(!s.relays.heater, 'Heater must be OFF');
+      ctx.assert(s.relays.pump,   'Pump must still be ON');
+      await ctx.inject({ roomTemp:null });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'E02', group:'E', name:'Stop heating: HA remote disable', auto:true,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.command({ cmd:'ha_disable', disable:true });
+      const s = await ctx.waitForState(s => !s.relays.heater, 3000, 'Waiting for heater OFF');
+      ctx.assert(!s.relays.heater, 'Heater must be OFF');
+      await ctx.command({ cmd:'ha_disable', disable:false });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'E03', group:'E', name:'Stop heating: thermostat opens', auto:true,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.inject({ thermostatAllow:false });
+      const s = await ctx.waitForState(s => !s.relays.heater, 3000, 'Waiting for heater OFF');
+      ctx.assert(!s.relays.heater, 'Heater must be OFF');
+      await ctx.inject({ thermostatAllow:true });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'E04', group:'E', name:'Stop heating: flow sensor fault (critical alarm path)', auto:true,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.inject({ flowFault:true });
+      const s = await ctx.waitForState(s => !s.relays.heater, 3000, 'Waiting for heater OFF');
+      ctx.assert(!s.relays.heater,          'Heater must be OFF');
+      ctx.assert(s.alarms.flowSensorFault,  'FLOW_SENSOR_FAULT alarm must be set');
+      ctx.assert(s.status.phase === 'pump_post', 'Phase must be PUMP_POST (critical alarm path)');
+      await ctx.inject({ flowFault:false, flowTemp:35 });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'E05', group:'E', name:'Stop heating: overheat 80°C (critical alarm path)', auto:true,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.inject({ flowTemp:82 });
+      const s = await ctx.waitForState(s => !s.relays.heater, 3000, 'Waiting for heater OFF');
+      ctx.assert(!s.relays.heater,      'Heater must be OFF');
+      ctx.assert(s.alarms.overheat,     'OVERHEAT alarm must be set');
+      ctx.assert(s.status.phase === 'pump_post', 'Phase must be PUMP_POST');
+      await ctx.inject({ flowTemp:35 });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  { id:'E06', group:'E', name:'Return sensor fault during heating → no stop', auto:true,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.inject({ returnFault:true });
+      await ctx.waitMs(1000);
+      const s = await ctx.getState();
+      ctx.assert(s.relays.heater,              'Heater must STILL be ON (return fault = warning only)');
+      ctx.assert(s.alarms.returnSensorFault,   'RETURN_SENSOR_FAULT alarm must be set');
+      ctx.assert(s.status.phase === 'heating', 'Phase must still be HEATING');
+      // Clean up: stop heater
+      await ctx.inject({ returnFault:false, returnTemp:30, flowTemp:56 });
+      await ctx.waitForState(s => !s.relays.heater, 3000, 'Stopping heater');
+      await ctx.inject({ flowTemp:35 });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+    }},
+
+  // ── Group F: Antifreeze mode ─────────────────────────────────────────────
+  { id:'F01', group:'F', name:'ANTIFREEZE: pump always ON', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ flowTemp:35, returnTemp:15, flowFault:false, returnFault:false,
+                         thermostatOverride:true, thermostatAllow:true });
+      await ctx.command({ cmd:'set_mode', mode:'antifreeze' });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(s.relays.pump,   'Pump must be ON in ANTIFREEZE mode');
+      ctx.assert(s.status.mode === 'antifreeze', 'Mode must be ANTIFREEZE');
+    }},
+
+  { id:'F02', group:'F', name:'ANTIFREEZE: heater starts when return < 8°C', auto:true,
+    run: async (ctx) => {
+      // Mode is still ANTIFREEZE from F01. Wait for min-off, then inject cold return.
+      await ctx.waitForMinOff();
+      await ctx.inject({ returnTemp:6 }); // < ANTIFREEZE_HEATER_ON=8
+      const s = await ctx.waitForState(s => s.relays.heater, 4000, 'Waiting for heater ON');
+      ctx.assert(s.relays.heater, 'Heater must be ON (return=6°C < 8°C threshold)');
+      ctx.assert(s.relays.pump,   'Pump must remain ON');
+    }},
+
+  { id:'F03', group:'F', name:'ANTIFREEZE: heater stops when return >= 10°C', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ returnTemp:11 }); // >= ANTIFREEZE_HEATER_OFF=10
+      const s = await ctx.waitForState(s => !s.relays.heater, 3000, 'Waiting for heater OFF');
+      ctx.assert(!s.relays.heater, 'Heater must be OFF (return=11°C >= 10°C threshold)');
+      ctx.assert(s.relays.pump,    'Pump must remain ON');
+    }},
+
+  { id:'F04', group:'F', name:'ANTIFREEZE: room guard blocks heater', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ returnTemp:6, roomTemp:11 }); // room >= ANTIFREEZE_ROOM_MAX=10
+      await ctx.waitMs(1000);
+      const s = await ctx.getState();
+      ctx.assert(!s.relays.heater, 'Heater must be OFF — room guard (room=11°C >= 10°C)');
+      ctx.assert(s.relays.pump,    'Pump must remain ON');
+      await ctx.inject({ roomTemp:null, returnTemp:15 });
+    }},
+
+  { id:'F05', group:'F', name:'ANTIFREEZE: no return sensor → heater stays OFF', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ returnFault:true, returnTemp:null }); // no return sensor
+      await ctx.waitMs(1000);
+      const s = await ctx.getState();
+      ctx.assert(!s.relays.heater, 'Heater must be OFF — isAntifreezeHeatNeeded requires hasReturn()');
+      await ctx.inject({ returnFault:false, returnTemp:15 });
+    }},
+
+  { id:'F06', group:'F', name:'ANTIFREEZE → OFF: pump stops after post-delay', auto:true,
+    run: async (ctx) => {
+      await ctx.inject({ returnTemp:15 });
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay after antifreeze→OFF');
+      const s = await ctx.waitForState(s => !s.relays.pump, 5000, 'Waiting for pump OFF');
+      ctx.assert(!s.relays.pump, 'Pump must be OFF after ANTIFREEZE→OFF transition');
+    }},
+
+  // ── Group G: Mode transitions ─────────────────────────────────────────────
+  { id:'G01', group:'G', name:'ON→OFF during PUMP_PRE: pump finishes, heater never starts', auto:true,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30, thermostatOverride:true, thermostatAllow:true,
+                         flowFault:false, returnFault:false, roomTemp:null });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.status.phase === 'pump_pre', 3000, 'Waiting for PUMP_PRE');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.waitMs(600);
+      const s = await ctx.getState();
+      ctx.assert(!s.relays.heater,  'Heater must never have turned ON');
+      // Pump may still be in post-delay; just verify mode is now OFF
+      ctx.assert(s.status.mode === 'off', 'Mode must be OFF');
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+    }},
+
+  { id:'G02', group:'G', name:'ON→OFF during HEATING: heater stops, pump post-delay runs', auto:true,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.waitMs(600);
+      const s1 = await ctx.getState();
+      ctx.assert(!s1.relays.heater,      'Heater must be OFF immediately after mode→OFF');
+      ctx.assert(s1.status.mode === 'off','Mode must be OFF');
+      // Pump should be in post-delay
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      const s2 = await ctx.getState();
+      ctx.assert(!s2.relays.pump, 'Pump must be OFF after post-delay');
+    }},
+
+  // ── Group M: Semi-manual hardware verification ──────────────────────────
+  { id:'M01', group:'M', name:'DS18B20 Flow sensor: temp rises on heating', auto:false,
+    run: async (ctx) => {
+      await ctx.inject({ active:false });
+      await ctx.waitMs(500);
+      const base = await ctx.getState();
+      const baseFlow = base.sensors.flowTemp;
+      ctx.assert(baseFlow !== null && baseFlow !== undefined, 'Flow sensor must be readable (DS18B20 connected)');
+      await ctx.manualTest(
+        'DS18B20 Flow Sensor',
+        `Baseline: ${parseFloat(baseFlow).toFixed(1)}°C\n\nHeat the flow sensor with your hand or warm breath. The temperature should rise by at least 2°C.`,
+        async () => {
+          const s = await ctx.client.getState();
+          return s.sensors.flowTemp !== null && parseFloat(s.sensors.flowTemp) > parseFloat(baseFlow) + 2;
+        }, 30000);
+      await ctx.inject({ active:true });
+    }},
+
+  { id:'M02', group:'M', name:'DS18B20 Return sensor: temp rises on heating', auto:false,
+    run: async (ctx) => {
+      await ctx.inject({ active:false });
+      await ctx.waitMs(500);
+      const base = await ctx.getState();
+      const baseReturn = base.sensors.returnTemp;
+      ctx.assert(baseReturn !== null && baseReturn !== undefined, 'Return sensor must be readable');
+      await ctx.manualTest(
+        'DS18B20 Return Sensor',
+        `Baseline: ${parseFloat(baseReturn).toFixed(1)}°C\n\nHeat the return sensor with your hand or warm breath. The temperature should rise by at least 2°C.`,
+        async () => {
+          const s = await ctx.client.getState();
+          return s.sensors.returnTemp !== null && parseFloat(s.sensors.returnTemp) > parseFloat(baseReturn) + 2;
+        }, 30000);
+      await ctx.inject({ active:true });
+    }},
+
+  { id:'M03', group:'M', name:'Thermostat contact: OPEN blocks heating (NO mode)', auto:false,
+    run: async (ctx) => {
+      // Use real GPIO — no thermostat override
+      await ctx.inject({ active:true, flowTemp:35, returnTemp:30, thermostatOverride:false,
+                         flowFault:false, returnFault:false, roomTemp:null });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.manualTest(
+        'Thermostat Input — Contact OPEN',
+        'Make sure the thermostat contact is OPEN (no connection between DIN1 and GND).\n\nThe boiler should NOT start heating (if configured as Normally Open, OPEN = block).',
+        async () => {
+          const s = await ctx.client.getState();
+          return s.status.phase === 'idle' && !s.relays.heater;
+        }, 20000);
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ thermostatOverride:true, thermostatAllow:true });
+    }},
+
+  { id:'M04', group:'M', name:'Thermostat contact: CLOSED allows heating (NO mode)', auto:false,
+    run: async (ctx) => {
+      await ctx.inject({ active:true, flowTemp:35, returnTemp:30, thermostatOverride:false,
+                         flowFault:false, returnFault:false, roomTemp:null });
+      await ctx.waitForMinOff();
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.manualTest(
+        'Thermostat Input — Contact CLOSED',
+        'SHORT (connect) the thermostat contact pins DIN1 and GND.\n\nThe pump should start (PUMP_PRE) within 1 second.',
+        async () => {
+          const s = await ctx.client.getState();
+          return s.status.phase === 'pump_pre' || s.relays.pump;
+        }, 20000);
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.inject({ thermostatOverride:true, thermostatAllow:true });
+    }},
+
+  { id:'M05', group:'M', name:'Relay 1 (Heater): listen for click ON', auto:false,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.manualTest(
+        'Relay 1 — Heater ON',
+        'The heater relay should have clicked ON.\n\nDid you hear the relay click?',
+        null, 15000);
+      await ctx.inject({ flowTemp:56 });
+      await ctx.waitForState(s => !s.relays.heater, 3000, 'Stopping heater');
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ flowTemp:35 });
+    }},
+
+  { id:'M06', group:'M', name:'Relay 1 (Heater): listen for click OFF', auto:false,
+    run: async (ctx) => {
+      await ctx.startHeater(PD);
+      await ctx.inject({ flowTemp:56 });
+      await ctx.waitForState(s => !s.relays.heater, 3000, 'Stopping heater');
+      await ctx.manualTest(
+        'Relay 1 — Heater OFF',
+        'The heater relay should have clicked OFF.\n\nDid you hear the relay click?',
+        null, 15000);
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.inject({ flowTemp:35 });
+    }},
+
+  { id:'M07', group:'M', name:'Relay 2 (Pump): listen for click ON', auto:false,
+    run: async (ctx) => {
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30, flowFault:false });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.relays.pump, 3000, 'Waiting for pump ON');
+      await ctx.manualTest(
+        'Relay 2 — Pump ON',
+        'The pump relay should have clicked ON when PUMP_PRE started.\n\nDid you hear the relay click?',
+        null, 15000);
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+    }},
+
+  { id:'M08', group:'M', name:'Relay 2 (Pump): listen for click OFF', auto:false,
+    run: async (ctx) => {
+      // Start pump, then stop
+      await ctx.waitForMinOff();
+      await ctx.inject({ flowTemp:35, returnTemp:30, flowFault:false });
+      await ctx.command({ cmd:'set_mode', mode:'on' });
+      await ctx.waitForState(s => s.relays.pump, 3000, 'Waiting for pump ON');
+      await ctx.command({ cmd:'set_mode', mode:'off' });
+      await ctx.waitMs((PD + 3) * 1000, 'Post-delay');
+      await ctx.waitForState(s => !s.relays.pump, 5000, 'Waiting for pump OFF');
+      await ctx.manualTest(
+        'Relay 2 — Pump OFF',
+        'The pump relay should have clicked OFF after the post-delay.\n\nDid you hear the relay click?',
+        null, 15000);
+    }},
+
+  { id:'M09', group:'M', name:'Buzzer: OVERHEAT pattern (continuous)', auto:false,
+    run: async (ctx) => {
+      await ctx.inject({ active:true, flowTemp:82, flowFault:false });
+      await ctx.waitMs(500);
+      await ctx.manualTest(
+        'Buzzer — Overheat Pattern',
+        'Flow sensor is now set to 82°C (overheat).\n\nDo you hear a CONTINUOUS buzzer tone?',
+        null, 15000);
+      await ctx.inject({ flowTemp:35 });
+      await ctx.waitMs(500);
+    }},
+
+  { id:'M10', group:'M', name:'Buzzer: FAULT pattern (3-beep repeat)', auto:false,
+    run: async (ctx) => {
+      await ctx.inject({ flowFault:true });
+      await ctx.waitMs(500);
+      await ctx.manualTest(
+        'Buzzer — Fault Pattern',
+        'Flow sensor fault is now active.\n\nDo you hear a REPEATING 3-beep fault pattern?',
+        null, 15000);
+      await ctx.inject({ flowFault:false, flowTemp:35 });
+      await ctx.waitMs(500);
+    }},
+
+  { id:'M11', group:'M', name:'Button UP: hardware press detected', auto:false,
+    run: async (ctx) => {
+      await ctx.manualTest(
+        'Button — UP',
+        'Press the UP button on the device display panel.',
+        async () => {
+          const s = await ctx.client.getState();
+          return s.lastHwButton === 1; // ButtonEvent::UP
+        }, 20000);
+    }},
+
+  { id:'M12', group:'M', name:'Button DOWN: hardware press detected', auto:false,
+    run: async (ctx) => {
+      await ctx.manualTest(
+        'Button — DOWN',
+        'Press the DOWN button on the device display panel.',
+        async () => {
+          const s = await ctx.client.getState();
+          return s.lastHwButton === 2; // ButtonEvent::DOWN
+        }, 20000);
+    }},
+
+  { id:'M13', group:'M', name:'Button ENTER: hardware press detected', auto:false,
+    run: async (ctx) => {
+      await ctx.manualTest(
+        'Button — ENTER',
+        'Press the ENTER button on the device display panel.',
+        async () => {
+          const s = await ctx.client.getState();
+          return s.lastHwButton === 3; // ButtonEvent::ENTER
+        }, 20000);
+    }},
+
+  { id:'M14', group:'M', name:'Button BACK: hardware press detected', auto:false,
+    run: async (ctx) => {
+      await ctx.manualTest(
+        'Button — BACK',
+        'Press the BACK button on the device display panel.',
+        async () => {
+          const s = await ctx.client.getState();
+          return s.lastHwButton === 4; // ButtonEvent::BACK
+        }, 20000);
+    }},
+
+  ]; // end test array
+} // end makeTests
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Test Runner
+// ═══════════════════════════════════════════════════════════════════════════
+class TestRunner {
+  constructor(client, tests) {
+    this.client  = client;
+    this.tests   = tests;
+    this.results = new Map(); // id → {status, msg, elapsed}
+    this.aborted = false;
+    this.lastHeaterStopAt = Date.now() - MIN_OFF_MS - 1000; // assume min-off elapsed
+    this._lastHeaterOn    = false;
+    this._manualResolve   = null;
+    this._liveState       = null;
+  }
+
+  _log(msg, type = 'info') {
+    const el = document.getElementById('log-area');
+    if (!el) return;
+    const line = document.createElement('div');
+    line.className = 'l-' + type;
+    line.textContent = new Date().toLocaleTimeString() + ' ' + msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  _setCurrentWait(msg) {
+    const el = document.getElementById('run-summary');
+    if (el) el.textContent = msg || '';
+  }
+
+  _updateLiveState(s) {
+    this._liveState = s;
+    renderLiveState(s);
+  }
+
+  _setResult(id, status, msg, elapsed) {
+    this.results.set(id, { status, msg: msg || '', elapsed: elapsed || 0 });
+    updateTestRow(id, status, msg, elapsed);
+    updateGroupStats();
+    updateProgressBar();
+  }
+
+  async _runManualPrompt(title, prompt, autoDetect, timeoutMs) {
+    const overlay = document.getElementById('manual-overlay');
+    document.getElementById('manual-title').textContent   = title;
+    document.getElementById('manual-prompt').textContent  = prompt;
+    document.getElementById('manual-detect').textContent  = '';
+    overlay.classList.add('show');
+
+    return new Promise((resolve) => {
+      this._manualResolve = resolve;
+      let timeLeft = Math.ceil(timeoutMs / 1000);
+      document.getElementById('manual-countdown').textContent = timeLeft + 's';
+
+      const tick = setInterval(async () => {
+        if (this.aborted) { clearInterval(tick); overlay.classList.remove('show'); resolve('skip'); return; }
+        timeLeft--;
+        document.getElementById('manual-countdown').textContent = timeLeft > 0 ? timeLeft + 's' : 'Time up!';
+
+        // Auto-detect if provided
+        if (autoDetect) {
+          try {
+            const detected = await autoDetect();
+            if (detected) {
+              clearInterval(tick);
+              document.getElementById('manual-detect').textContent = '✓ Detected automatically!';
+              setTimeout(() => { overlay.classList.remove('show'); resolve('pass'); }, 800);
+              return;
+            }
+          } catch (_) {}
+        }
+
+        if (timeLeft <= 0) { clearInterval(tick); overlay.classList.remove('show'); resolve('timeout'); }
+      }, 1000);
+
+      // Store interval for manual buttons
+      this._manualInterval = tick;
+    });
+  }
+
+  async runTests(filter) {
+    this.aborted = false;
+    const tests = filter ? this.tests.filter(filter) : this.tests;
+    let done = 0;
+
+    // ── Setup: activate test mode, configure short pump delays ──
+    this._log('Setup: activating test mode…', 'info');
+    try {
+      await this.client.inject({
+        active: true, flowTemp: 35, returnTemp: 30,
+        flowFault: false, returnFault: false,
+        roomTemp: null, outsideTemp: null,
+        thermostatOverride: true, thermostatAllow: true,
+        roomSensorLost: false, outsideSensorLost: false
+      });
+      await this.client.config({
+        pumpPrePostDelaySec: 30,
+        flowSetpoint: 55, returnSetpoint: 45,
+        flowHysteresis: 3, returnHysteresis: 3,
+        roomSetpoint: 21, roomHysteresis: 1
+      });
+      await this.client.command({ cmd: 'set_mode', mode: 'off' });
+      this._log('Setup complete.', 'ok');
+    } catch (e) {
+      this._log('Setup failed: ' + e.message, 'err');
+      return;
+    }
+
+    enableRunButtons(false);
+
+    const ctx = new TestContext(this.client, this);
+
+    for (const test of tests) {
+      if (this.aborted) break;
+
+      this._setResult(test.id, 'running', '', 0);
+      scrollToTest(test.id);
+      this._log(`▶ ${test.id}: ${test.name}`, 'info');
+
+      const t0 = Date.now();
+      try {
+        await test.run(ctx);
+        const elapsed = Date.now() - t0;
+        this._setResult(test.id, 'pass', '', elapsed);
+        this._log(`✓ ${test.id} passed (${(elapsed/1000).toFixed(1)}s)`, 'ok');
+      } catch (e) {
+        const elapsed = Date.now() - t0;
+        if (e instanceof AbortError) {
+          this._setResult(test.id, 'skip', 'Aborted', elapsed);
+          this._log(`— ${test.id} aborted`, 'warn');
+          break;
+        }
+        const msg = e instanceof AssertError ? e.message : ('Error: ' + e.message);
+        this._setResult(test.id, 'fail', msg, elapsed);
+        this._log(`✗ ${test.id} FAILED: ${msg}`, 'err');
+      }
+      done++;
+    }
+
+    // ── Teardown ──
+    try {
+      await this.client.inject({ active: false });
+      await this.client.command({ cmd: 'set_mode', mode: 'off' });
+    } catch (_) {}
+
+    this._setCurrentWait('');
+    enableRunButtons(true);
+    this._log(`Done. ${done} tests ran.`, 'ok');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  UI Helpers
+// ═══════════════════════════════════════════════════════════════════════════
+const GROUP_META = {
+  A: { name:'A — Instant checks',            auto:true  },
+  B: { name:'B — Weather compensation',      auto:true  },
+  C: { name:'C — Heater start cycle',        auto:true  },
+  D: { name:'D — Pre-delay cancellations',   auto:true  },
+  E: { name:'E — Stop conditions (heating)', auto:true  },
+  F: { name:'F — Antifreeze mode',           auto:true  },
+  G: { name:'G — Mode transitions',          auto:true  },
+  M: { name:'M — Hardware (semi-manual)',     auto:false },
+};
+
+let _allTests = [];
+let _runner   = null;
+let _client   = null;
+let _liveInterval = null;
+
+function buildTestList(tests) {
+  _allTests = tests;
+  const groups = {};
+  tests.forEach(t => {
+    if (!groups[t.group]) groups[t.group] = [];
+    groups[t.group].push(t);
+  });
+
+  let html = '';
+  for (const [gid, meta] of Object.entries(GROUP_META)) {
+    if (!groups[gid]) continue;
+    html += `
+      <div class="card group-card" id="group-${gid}">
+        <div class="group-header" onclick="toggleGroup('${gid}')">
+          <span class="group-title">${meta.name}</span>
+          <span class="group-stats" id="gstats-${gid}">
+            <span id="gcount-${gid}">${groups[gid].length} tests</span>
+          </span>
+        </div>
+        <div class="group-body" id="gbody-${gid}">`;
+    for (const t of groups[gid]) {
+      html += `
+        <div class="test-row pending" id="tr-${t.id}" onclick="scrollToTest('${t.id}',true)">
+          <div class="test-icon" id="ti-${t.id}">○</div>
+          <div class="test-info">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span class="test-id">${t.id}</span>
+              ${!t.auto ? '<span class="test-manual-badge">manual</span>' : ''}
+            </div>
+            <div class="test-name">${t.name}</div>
+            <div class="test-msg" id="tm-${t.id}"></div>
+          </div>
+          <div class="test-time" id="tt-${t.id}"></div>
+        </div>`;
+    }
+    html += `</div></div>`;
+  }
+  document.getElementById('test-list').innerHTML = html;
+}
+
+function toggleGroup(gid) {
+  const body = document.getElementById('gbody-' + gid);
+  if (body) body.style.display = body.style.display === 'none' ? '' : 'none';
+}
+
+function updateTestRow(id, status, msg, elapsed) {
+  const row  = document.getElementById('tr-' + id);
+  const icon = document.getElementById('ti-' + id);
+  const msgEl= document.getElementById('tm-' + id);
+  const time = document.getElementById('tt-' + id);
+  if (!row) return;
+  row.className = 'test-row ' + status;
+  if (icon) icon.textContent = {pass:'✓', fail:'✗', skip:'—', running:'▶', pending:'○'}[status] || '○';
+  if (msgEl) msgEl.textContent = msg || '';
+  if (time && elapsed) time.textContent = (elapsed / 1000).toFixed(1) + 's';
+}
+
+function updateGroupStats() {
+  for (const gid of Object.keys(GROUP_META)) {
+    const el = document.getElementById('gcount-' + gid);
+    if (!el) continue;
+    const rows = document.querySelectorAll(`#gbody-${gid} .test-row`);
+    let pass = 0, fail = 0, skip = 0;
+    rows.forEach(r => {
+      if (r.classList.contains('pass'))  pass++;
+      if (r.classList.contains('fail'))  fail++;
+      if (r.classList.contains('skip'))  skip++;
+    });
+    let txt = rows.length + ' tests';
+    if (pass + fail + skip > 0) {
+      txt = `${pass}✓ ${fail}✗ ${skip}—`;
+    }
+    el.textContent = txt;
+  }
+}
+
+function updateProgressBar() {
+  const rows = document.querySelectorAll('.test-row');
+  const done = document.querySelectorAll('.test-row.pass, .test-row.fail, .test-row.skip').length;
+  const pct  = rows.length ? (done / rows.length * 100) : 0;
+  const bar  = document.getElementById('progress-bar');
+  if (bar) bar.style.width = pct + '%';
+}
+
+function scrollToTest(id, highlight) {
+  const el = document.getElementById('tr-' + id);
+  if (el) el.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function renderLiveState(s) {
+  if (!s) return;
+  const el = document.getElementById('live-state');
+  if (!el) return;
+  const dot = (on, warn) => `<span class="dot ${warn?'dot-warn':on?'dot-on':'dot-off'}"></span>`;
+  const fmt = v => v !== null && v !== undefined ? parseFloat(v).toFixed(1) + '°' : '—';
+  const alarmNames = [];
+  if (s.alarms) {
+    if (s.alarms.overheat)          alarmNames.push('OVERHEAT');
+    if (s.alarms.flowSensorFault)   alarmNames.push('FLOW_FAULT');
+    if (s.alarms.returnSensorFault) alarmNames.push('RETURN_FAULT');
+    if (s.alarms.roomSensorLost)    alarmNames.push('ROOM_LOST');
+    if (s.alarms.outsideSensorLost) alarmNames.push('OUTSIDE_LOST');
+  }
+  el.innerHTML = `
+    <div class="state-row"><span class="state-key">Flow</span><span class="state-val">${fmt(s.sensors?.flowTemp)}</span></div>
+    <div class="state-row"><span class="state-key">Return</span><span class="state-val">${fmt(s.sensors?.returnTemp)}</span></div>
+    <div class="state-row"><span class="state-key">Room</span><span class="state-val">${fmt(s.sensors?.roomTemp)}</span></div>
+    <div class="state-row"><span class="state-key">Outside</span><span class="state-val">${fmt(s.sensors?.outsideTemp)}</span></div>
+    <div class="state-row"><span class="state-key">Heater</span><span class="state-val">${dot(s.relays?.heater)} ${s.relays?.heater?'ON':'OFF'}</span></div>
+    <div class="state-row"><span class="state-key">Pump</span><span class="state-val">${dot(s.relays?.pump)} ${s.relays?.pump?'ON':'OFF'}</span></div>
+    <div class="state-row"><span class="state-key">Mode</span><span class="state-val">${(s.status?.mode||'').toUpperCase()}</span></div>
+    <div class="state-row"><span class="state-key">Phase</span><span class="state-val">${s.status?.phase||'—'}</span></div>
+    <div class="state-row"><span class="state-key">FlowSP</span><span class="state-val">${s.status?.activeFlowSetpoint||'—'}°</span></div>
+    <div class="state-row"><span class="state-key">ReturnSP</span><span class="state-val">${s.status?.activeReturnSetpoint||'—'}°</span></div>
+    <div class="state-row"><span class="state-key">Test</span><span class="state-val">${dot(s.testMode, !s.testMode)} ${s.testMode?'ACTIVE':'off'}</span></div>
+    ${alarmNames.length ? `<div class="state-row" style="color:#f87171"><span class="state-key">Alarms</span><span style="font-size:10px;color:#f87171">${alarmNames.join(', ')}</span></div>` : ''}
+  `;
+}
+
+function enableRunButtons(on) {
+  ['run-all','run-auto','run-hw','btn-abort'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !on;
+  });
+  const abort = document.getElementById('btn-abort');
+  if (abort) abort.disabled = on;
+}
+
+function setConnStatus(ok, msg) {
+  const el = document.getElementById('conn-status');
+  if (el) el.innerHTML = `<span class="badge ${ok?'badge-ok':'badge-err'}">${msg}</span>`;
+}
+
+function toggleSettings() {
+  const f = document.getElementById('settings-form');
+  const c = document.getElementById('run-controls');
+  if (!f || !c) return;
+  const showing = f.style.display !== 'none';
+  f.style.display  = showing ? 'none' : '';
+  c.style.display  = showing ? '' : 'none';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Manual overlay buttons
+// ═══════════════════════════════════════════════════════════════════════════
+function manualPass()  { _resolveManual('pass'); }
+function manualFail()  { _resolveManual('fail'); }
+function manualSkip()  { _resolveManual('skip'); }
+
+function _resolveManual(result) {
+  clearInterval(_runner?._manualInterval);
+  document.getElementById('manual-overlay').classList.remove('show');
+  if (_runner?._manualResolve) {
+    _runner._manualResolve(result);
+    _runner._manualResolve = null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Connect & Run actions
+// ═══════════════════════════════════════════════════════════════════════════
+async function connect() {
+  const url   = document.getElementById('inp-url').value.trim();
+  const user  = document.getElementById('inp-user').value.trim();
+  const pass  = document.getElementById('inp-pass').value;
+  const token = document.getElementById('inp-token').value.trim();
+
+  setConnStatus(false, 'Connecting…');
+  document.getElementById('log-area').innerHTML = '';
+
+  try {
+    const sid = await DeviceClient.login(url, user, pass);
+    _client = new DeviceClient(url, token, sid);
+
+    // Verify token works
+    const s = await _client.getState();
+    renderLiveState(s);
+
+    // Fetch pump delay from config to use in tests
+    let pumpDelaySec = 30;
+    try {
+      const r = await fetch(url + '/api/config', { headers: { 'Cookie': 'sid=' + sid } });
+      if (r.ok) { const cfg = await r.json(); pumpDelaySec = cfg.pumpPrePostDelaySec || 30; MIN_OFF_MS = (cfg.minHeaterOffSec || 180) * 1000; }
+    } catch (_) {}
+
+    const tests = makeTests(pumpDelaySec);
+    _runner = new TestRunner(_client, tests);
+    buildTestList(tests);
+
+    setConnStatus(true, 'Connected');
+    document.getElementById('settings-form').style.display = 'none';
+    document.getElementById('run-controls').style.display  = '';
+    enableRunButtons(true);
+
+    // Live state polling
+    if (_liveInterval) clearInterval(_liveInterval);
+    _liveInterval = setInterval(async () => {
+      try {
+        const s = await _client.getState();
+        renderLiveState(s);
+      } catch (_) {}
+    }, 2000);
+
+  } catch (e) {
+    setConnStatus(false, 'Failed');
+    document.getElementById('log-area').innerHTML =
+      `<div class="l-err">${e.message}</div>`;
+  }
+}
+
+function runAll()  { if (_runner) _runner.runTests(null); }
+function runAuto() { if (_runner) _runner.runTests(t =>  t.auto); }
+function runHw()   { if (_runner) _runner.runTests(t => !t.auto); }
+function abort()   { if (_runner) { _runner.aborted = true; _resolveManual('skip'); } }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  TestContext._runManualPrompt patches runner ref
+// ═══════════════════════════════════════════════════════════════════════════
+TestContext.prototype._runManualPrompt = function(title, prompt, autoDetect, timeoutMs) {
+  return this.runner._runManualPrompt(title, prompt, autoDetect, timeoutMs);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Init: pre-fill URL from opener if available
+// ═══════════════════════════════════════════════════════════════════════════
+(function() {
+  const saved = sessionStorage.getItem('boiler_url');
+  if (saved) document.getElementById('inp-url').value = saved;
+  document.getElementById('inp-url').addEventListener('change', function() {
+    sessionStorage.setItem('boiler_url', this.value);
+  });
+})();
+</script>
+</body>
+</html>

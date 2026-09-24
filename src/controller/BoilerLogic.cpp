@@ -127,11 +127,21 @@ void BoilerLogic::handleHeating() {
 }
 
 void BoilerLogic::handlePumpPost() {
+    // Heat demand returned during post-delay — go back to pre-delay with the
+    // pump still running. Hold pump on until min heater-off time elapses.
+    if (startConditionsMet()) {
+        if (isMinOffTimeElapsed()) transitionPhase(HeaterPhase::PUMP_PRE);
+        return;
+    }
+
     uint32_t postDelayMs = (uint32_t)_state.config.pumpPrePostDelaySec * 1000;
     uint32_t minPumpMs   = postDelayMs;  // reuse post_delay as min pump time
 
     uint32_t pumpRunMs = millis() - _pumpOnAt;
-    if (pumpRunMs >= minPumpMs) {
+    // Post-delay counts from heater off (phase entry) — only if heater actually ran
+    uint32_t postRunMs = millis() - _phaseEnteredAt;
+    bool postDone = !_heaterRanThisCycle || postRunMs >= postDelayMs;
+    if (pumpRunMs >= minPumpMs && postDone) {
         setPump(false, ChangeReason::PUMP_POSTDELAY_COMPLETE);
         transitionPhase(HeaterPhase::IDLE);
     }
@@ -167,13 +177,16 @@ void BoilerLogic::handleAntifreeze() {
 // ── Condition evaluators ──────────────────────────────────────────────────────
 
 bool BoilerLogic::canStartHeater() const {
+    return startConditionsMet() && isMinOffTimeElapsed();
+}
+
+bool BoilerLogic::startConditionsMet() const {
     if (!_state.sensors.hasFlow())          return false;
     if (isOverheat())                       return false;
     if (!isFlowBelowThreshold())            return false;
     if (!isReturnGateOpen())                return false;
     if (!isExternalThermostatAllowing())    return false;
     if (isHaAllowing() == false)            return false;
-    if (!isMinOffTimeElapsed())             return false;
     if (_state.sensors.hasRoom() && !isRoomBelowThreshold()) return false;
     return true;
 }
@@ -204,6 +217,9 @@ bool BoilerLogic::isRoomBelowThreshold() const {
 }
 
 bool BoilerLogic::isExternalThermostatAllowing() const {
+    if (_state.test.active && _state.test.thermostatOverride) {
+        return _state.test.thermostatAllow;
+    }
     bool contact = digitalRead(PIN_DIN_THERMOSTAT);
     if (_state.config.thermostatMode == ThermostatContact::NORMAL_OPEN)
         return !contact;   // LOW = contact closed = allow
@@ -221,7 +237,8 @@ bool BoilerLogic::isOverheat() const {
 }
 
 bool BoilerLogic::isMinOffTimeElapsed() const {
-    return (millis() - _heaterOffAt) >= Limits::MIN_HEATER_OFF_MS;
+    return (millis() - _heaterOffAt) >=
+           (uint32_t)_state.config.minHeaterOffSec * 1000;
 }
 
 bool BoilerLogic::isAntifreezeHeatNeeded() const {
@@ -272,14 +289,14 @@ void BoilerLogic::computeActiveSetpoints() {
 
 void BoilerLogic::setHeater(bool on, ChangeReason reason) {
     _relays.setHeater(on);
-    if (on)  _heaterOnAt  = millis();
-    else     _heaterOffAt = millis();
+    if (on) { _heaterOnAt  = millis(); _heaterRanThisCycle = true; }
+    else      _heaterOffAt = millis();
     logRelayChange(on ? RelayChange::HEATER_ON : RelayChange::HEATER_OFF, reason);
 }
 
 void BoilerLogic::setPump(bool on, ChangeReason reason) {
     _relays.setPump(on);
-    if (on) _pumpOnAt = millis();
+    if (on) { _pumpOnAt = millis(); _heaterRanThisCycle = false; }
     logRelayChange(on ? RelayChange::PUMP_ON : RelayChange::PUMP_OFF, reason);
 }
 
@@ -317,6 +334,21 @@ void BoilerLogic::checkSensorAlarms() {
     };
     checkLost(_state.sensors.roomLastSeen,    AlarmFlag::ROOM_SENSOR_LOST);
     checkLost(_state.sensors.outsideLastSeen, AlarmFlag::OUTSIDE_SENSOR_LOST);
+
+    // In test mode, override room/outside lost directly from test flags
+    // (bypasses the lastSeen timeout mechanism which can't be fast-forwarded)
+    if (_state.test.active) {
+        bool roomLost = _state.test.roomSensorLost;
+        if (roomLost != _state.alarms.isSet(AlarmFlag::ROOM_SENSOR_LOST)) {
+            roomLost ? _state.alarms.set(AlarmFlag::ROOM_SENSOR_LOST)
+                     : _state.alarms.clear(AlarmFlag::ROOM_SENSOR_LOST);
+        }
+        bool outsideLost = _state.test.outsideSensorLost;
+        if (outsideLost != _state.alarms.isSet(AlarmFlag::OUTSIDE_SENSOR_LOST)) {
+            outsideLost ? _state.alarms.set(AlarmFlag::OUTSIDE_SENSOR_LOST)
+                        : _state.alarms.clear(AlarmFlag::OUTSIDE_SENSOR_LOST);
+        }
+    }
 }
 
 void BoilerLogic::checkOverheatAlarm() {

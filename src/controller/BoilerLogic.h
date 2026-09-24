@@ -38,6 +38,7 @@ private:
 
     // All start conditions — returns true if heater may start
     bool canStartHeater()  const;
+    bool startConditionsMet() const;  // canStartHeater() minus min-off-time
 
     // Any stop condition — returns true if heater must stop
     bool shouldStopHeater() const;
@@ -86,4 +87,5 @@ private:
     uint32_t _heaterOnAt        = 0;  // millis when heater turned on
     uint32_t _heaterOffAt       = 0;  // millis when heater turned off
     uint32_t _pumpOnAt          = 0;  // millis when pump turned on
+    bool     _heaterRanThisCycle = false;  // heater was on since pump started
 };

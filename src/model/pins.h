@@ -19,9 +19,6 @@
 #define PIN_I2C_SDA           4
 #define PIN_I2C_SCL          16
 
-// ─── PCF8574 Interrupt ───────────────────────────────────────────────────────
-#define PIN_PCF_INT          34   // Input-only GPIO, falling edge interrupt
-
 // ─── I2C Device Addresses ────────────────────────────────────────────────────
 #define I2C_ADDR_OLED       0x3C  // SSD1309 128x64 OLED
 #define I2C_ADDR_PCF8574    0x20  // PCF8574 GPIO expander (A0=A1=A2=0)
