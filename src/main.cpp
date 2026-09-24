@@ -23,6 +23,7 @@
 #include "service/OtaService.h"
 #include "service/TimeService.h"
 #include "service/NvsConfig.h"
+#include "service/EnergyMeter.h"
 
 // Views
 #include "view/display/DisplayView.h"
@@ -47,6 +48,7 @@ MqttService mqttService(state);
 OtaService  otaService(state);
 
 BoilerLogic boilerLogic(state, relays, buzzer, timeService);
+EnergyMeter energyMeter(state, timeService);
 
 DisplayView displayView(state, timeService);
 WebView     webView(state, boilerLogic);
@@ -98,6 +100,7 @@ void setup() {
 
     // Load config from NVS
     nvsConfig.load(state.config);
+    energyMeter.begin();
 
     // Hardware init
     relays.begin();
@@ -186,6 +189,7 @@ void loop() {
 
     // ── Heating controller ────────────────────────────────────────────────────
     boilerLogic.update();
+    energyMeter.update();
 
     // ── Display ───────────────────────────────────────────────────────────────
     displayView.update();

@@ -254,6 +254,11 @@ struct Config {
     uint16_t minHeaterOffSec      = 180;  // 60–180 s
     // min heater ON time is a fixed constant — not stored
 
+    // ── Energy meter ──
+    uint16_t heaterPowerDeciKw    =  75;  // 5–300 (0.5–30.0 kW, 0.1 kW units)
+                                          // default: 3× 3 kW/230 V elements — 2 in series
+                                          // phase-phase (400 V → 4.54 kW) + 1 phase-N (3 kW)
+
     // ── Hardware ──
     ThermostatContact thermostatMode = ThermostatContact::NORMAL_OPEN;
 
@@ -320,6 +325,15 @@ struct TestState {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Energy Meter (persisted by EnergyMeter, not part of Config)
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct EnergyState {
+    uint32_t totalWh = 0;   // heater energy since last reset (Wh)
+    uint32_t resetTs = 0;   // unix time of last reset, 0 = unknown / never
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Root State — single instance in main.cpp
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -331,6 +345,10 @@ struct AppState {
     Config       config;
     EventLog     log;
     TestState    test;
+    EnergyState  energy;
+
+    // Set by web task, consumed by EnergyMeter::update() on the main loop task.
+    volatile bool energyResetRequested = false;
 
     // Set by web task, consumed by DisplayView::update() on the main loop task.
     // Values map to ButtonEvent enum: 0=none, 1=UP, 2=DOWN, 3=ENTER, 4=BACK, 5=SETTINGS.

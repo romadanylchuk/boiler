@@ -23,7 +23,8 @@ private:
     void publishDiscovery();
     void publishSensorDiscovery(const char* id, const char* name,
                                 const char* topic, const char* unit,
-                                const char* devClass = nullptr);
+                                const char* devClass = nullptr,
+                                const char* stateClass = nullptr);
     void publishBinarySensorDiscovery(const char* id, const char* name,
                                       const char* topic,
                                       const char* devClass = nullptr);
@@ -82,6 +83,7 @@ private:
     bool     _lastHeater      = false;
     bool     _lastPump        = false;
     uint8_t  _lastMode        = 255;
+    uint32_t _lastEnergyWh    = UINT32_MAX;
 
     static constexpr uint32_t PUBLISH_INTERVAL_MS = 5000;  // publish state every 5s
     static constexpr const char* BASE = "boiler";           // MQTT topic prefix

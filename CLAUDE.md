@@ -91,6 +91,7 @@ AppState (single source of truth)
     ├── BleScanner (NimBLE), ApiClient (HTTP temp poll)
     ├── MqttService, OtaService (ElegantOTA)
     ├── TimeService (NTP + uptime fallback)
+    ├── EnergyMeter (heater kWh estimate, NVS-persisted)
     └── NvsConfig (load/save Config to NVS)
 ```
 
@@ -224,6 +225,7 @@ boiler/
 │   │   ├── MqttService.cpp/.h
 │   │   ├── OtaService.cpp/.h
 │   │   ├── TimeService.cpp/.h    (NTP + uptime fallback)
+│   │   ├── EnergyMeter.cpp/.h    (heater kWh = power × ON time, NVS-persisted)
 │   │   └── NvsConfig.cpp/.h      (load/save Config)
 │   ├── view/
 │   │   ├── display/DisplayView.cpp/.h  (SSD1309 via U8g2)

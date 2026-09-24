@@ -182,6 +182,7 @@ function renderDashboard() {
                 </div>
             </div>
         </div>
+        ${energyCard(cachedState.energy, r.heater)}
         <div class="card">
             <h3>Display Buttons</h3>
             <div class="dsp-btn-panel">
@@ -193,6 +194,20 @@ function renderDashboard() {
             </div>
         </div>
         <div class="refresh-hint">Auto-refresh every 3s</div>`;
+}
+
+function energyCard(e, heaterOn) {
+    if (!e) return '';
+    const since = e.resetTs ? new Date(e.resetTs * 1000).toLocaleString() : 'unknown';
+    return `
+        <div class="card">
+            <h3>Energy</h3>
+            <div style="font-size:28px;font-weight:600">${parseFloat(e.totalKwh).toFixed(2)} kWh</div>
+            <div style="margin-top:6px;font-size:12px;color:#475569">
+                Since reset: <strong>${since}</strong> &middot;
+                Heater power: <strong>${e.powerKw} kW</strong>${heaterOn ? ' &middot; <strong>counting</strong>' : ''}
+            </div>
+        </div>`;
 }
 
 function tempCard(label, value, fault, setpoint, alarmFlag) {
@@ -392,6 +407,16 @@ function tplControl(c) {
             </div>
         </div>
         <div class="form-section">
+            <h4>Energy Meter</h4>
+            <div class="form-grid">
+                <div class="form-group"><label>Heater Power kW (0.5&ndash;30)</label>
+                    <input type="number" name="heaterPowerKw" min="0.5" max="30" step="0.1" value="${c.heaterPowerKw}"></div>
+            </div>
+            <div class="info-text" style="margin:6px 0 10px">Energy = heater power &times; heater ON time. Stored in flash, survives power loss.</div>
+            <button type="button" class="btn btn-secondary" onclick="doEnergyReset()">Reset Energy Counter</button>
+            <div id="energy-rst-msg" style="margin-top:8px"></div>
+        </div>
+        <div class="form-section">
             <h4>External Thermostat Contact</h4>
             <div class="form-group"><label>Contact Mode</label>
                 <select name="thermostatMode">${tOpts}</select></div>
@@ -580,6 +605,7 @@ async function saveSettings() {
                         'roomSetpoint','roomHysteresis','pumpPrePostDelaySec',
                         'standbyPumpPeriodMin','standbyPumpDurationMin','minHeaterOffSec'];
         fields.forEach(k => { const v = gi(k); if (v !== null) payload[k] = v; });
+        const pw = g('heaterPowerKw'); if (pw) payload.heaterPowerKw = parseFloat(pw);
         const tm = g('thermostatMode'); if (tm) payload.thermostatMode = tm;
     }
 
@@ -622,6 +648,19 @@ async function saveSettings() {
         }
     } catch (_) {
         if (msgEl) msgEl.innerHTML = '<div class="msg-error">Network error</div>';
+    }
+}
+
+async function doEnergyReset() {
+    const msg = document.getElementById('energy-rst-msg');
+    if (!confirm('Reset the energy counter to 0 kWh?')) return;
+    try {
+        const res = await apiPost('/api/config', { energyReset: true });
+        if (msg) msg.innerHTML = res.ok
+            ? '<div class="msg-ok">&#10003; Energy counter reset</div>'
+            : '<div class="msg-error">Reset failed</div>';
+    } catch (_) {
+        if (msg) msg.innerHTML = '<div class="msg-error">Network error</div>';
     }
 }
 

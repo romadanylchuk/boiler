@@ -489,6 +489,14 @@ void WebView::handleApiConfigSet(AsyncWebServerRequest* req, JsonVariant& body) 
     if (obj.containsKey("standbyPumpDurationMin")) { cfg.standbyPumpDurationMin = (uint8_t)constrain((int)obj["standbyPumpDurationMin"],  1, 5);     changed = true; }
     if (obj.containsKey("minHeaterOffSec"))        { cfg.minHeaterOffSec        = (uint16_t)constrain((int)obj["minHeaterOffSec"],        60, 180);  changed = true; }
 
+    // Energy meter
+    if (obj.containsKey("heaterPowerKw")) {
+        float kw = obj["heaterPowerKw"] | 0.0f;
+        cfg.heaterPowerDeciKw = (uint16_t)constrain((int)lroundf(kw * 10), 5, 300);
+        changed = true;
+    }
+    if (obj["energyReset"] | false) _state.energyResetRequested = true;  // applied by EnergyMeter
+
     // WiFi
     if (obj.containsKey("wifiSsid")) { strlcpy(cfg.wifiSsid, obj["wifiSsid"] | "", sizeof(cfg.wifiSsid)); changed = true; }
     if (obj.containsKey("wifiPass")) { strlcpy(cfg.wifiPass, obj["wifiPass"] | "", sizeof(cfg.wifiPass)); changed = true; }
@@ -741,6 +749,12 @@ void WebView::buildStateJson(JsonDocument& doc) const {
     relays["heater"] = r.heaterOn;
     relays["pump"]   = r.pumpOn;
 
+    // Energy meter
+    JsonObject energy = doc["energy"].to<JsonObject>();
+    energy["totalKwh"] = serialized(String(_state.energy.totalWh / 1000.0, 3));
+    energy["resetTs"]  = _state.energy.resetTs;
+    energy["powerKw"]  = serialized(String(_state.config.heaterPowerDeciKw / 10.0, 1));
+
     // Status
     JsonObject status = doc["status"].to<JsonObject>();
     const char* modeStr = "off";
@@ -828,6 +842,7 @@ void WebView::buildConfigJson(JsonDocument& doc) const {
     doc["standbyPumpPeriodMin"]   = cfg.standbyPumpPeriodMin;
     doc["standbyPumpDurationMin"] = cfg.standbyPumpDurationMin;
     doc["minHeaterOffSec"]        = cfg.minHeaterOffSec;
+    doc["heaterPowerKw"]          = serialized(String(cfg.heaterPowerDeciKw / 10.0, 1));
 
     doc["thermostatMode"] = (cfg.thermostatMode == ThermostatContact::NORMAL_CLOSED) ? "NC" : "NO";
 

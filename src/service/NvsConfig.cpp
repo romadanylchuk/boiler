@@ -18,6 +18,9 @@ void NvsConfig::load(Config& cfg) {
     cfg.standbyPumpDurationMin = _prefs.getUChar("stbyDur",      cfg.standbyPumpDurationMin);
     cfg.minHeaterOffSec        = _prefs.getUShort("minOffSec",    cfg.minHeaterOffSec);
 
+    // ── Energy meter ───────────────────────────────────────────────────────────
+    cfg.heaterPowerDeciKw      = _prefs.getUShort("heaterPwr",    cfg.heaterPowerDeciKw);
+
     // ── Hardware ───────────────────────────────────────────────────────────────
     cfg.thermostatMode = (ThermostatContact)_prefs.getUChar("tstatMode", (uint8_t)cfg.thermostatMode);
 
@@ -96,6 +99,9 @@ void NvsConfig::save(const Config& cfg) {
     _prefs.putUShort("stbyPeriod", cfg.standbyPumpPeriodMin);
     _prefs.putUChar("stbyDur",     cfg.standbyPumpDurationMin);
     _prefs.putUShort("minOffSec",  cfg.minHeaterOffSec);
+
+    // Energy meter
+    _prefs.putUShort("heaterPwr",  cfg.heaterPowerDeciKw);
 
     // Hardware
     _prefs.putUChar("tstatMode", (uint8_t)cfg.thermostatMode);

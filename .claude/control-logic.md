@@ -124,6 +124,18 @@ Hardware backup: physical 85°C thermostat on heater (independent of firmware).
 | standby_pump_period | 30 min – 3 h | 2 h |
 | standby_pump_duration | 1–5 min | 3 min |
 
+### Energy meter
+| Parameter | Range | Default |
+|-----------|-------|---------|
+| heater_power | 0.5–30 kW (step 0.1) | 7.5 kW (2× 3 kW in series on 400 V + 1× 3 kW on 230 V = 7.54 kW) |
+
+- Energy (kWh) = heater_power × heater relay ON time — estimate, pump not counted
+- Accumulated in RAM, saved to NVS on every heater OFF and every 10 min while heating
+  (power loss loses at most ~10 min of heating)
+- Reset from web Settings → Control → Energy Meter; reset time stored (unix, 0 if NTP not synced)
+- Exposed in `/api/state` (`energy.totalKwh`, `energy.resetTs`, `energy.powerKw`) and
+  MQTT `boiler/sensor/heater_energy` (HA device_class energy, state_class total_increasing)
+
 ### External thermostat
 | Parameter | Options | Default |
 |-----------|---------|---------|

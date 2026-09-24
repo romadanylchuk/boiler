@@ -53,6 +53,7 @@ void MqttView::onNewSession() {
     // Forget cached values so the full state is republished right away
     _lastFlowTemp = _lastReturnTemp = _lastRoomTemp = _lastOutsideTemp = -999;
     _lastMode   = 255;
+    _lastEnergyWh = UINT32_MAX;
     _lastHeater = !_state.relays.heaterOn;
     _lastPump   = !_state.relays.pumpOn;
     _lastAlarms = 0xFFFF;
@@ -92,6 +93,10 @@ void MqttView::publishDiscovery() {
     publishSensorDiscovery("room_temp",    "Room Temperature",    "boiler/sensor/room_temp",    "°C", "temperature");
     publishSensorDiscovery("outside_temp", "Outside Temperature", "boiler/sensor/outside_temp", "°C", "temperature");
 
+    // Energy meter — total_increasing makes it usable in the HA Energy dashboard
+    publishSensorDiscovery("heater_energy", "Boiler Heater Energy", "boiler/sensor/heater_energy",
+                           "kWh", "energy", "total_increasing");
+
     // Binary sensors for relays
     publishBinarySensorDiscovery("heater", "Boiler Heater", "boiler/relay/heater", "heat");
     publishBinarySensorDiscovery("pump",   "Boiler Pump",   "boiler/relay/pump",   nullptr);
@@ -123,7 +128,8 @@ void MqttView::publishDiscovery() {
 
 void MqttView::publishSensorDiscovery(const char* id, const char* name,
                                        const char* topic, const char* unit,
-                                       const char* devClass) {
+                                       const char* devClass,
+                                       const char* stateClass) {
     char discoveryTopic[96];
     snprintf(discoveryTopic, sizeof(discoveryTopic),
              "homeassistant/sensor/%s/%s/config", BASE, id);
@@ -134,6 +140,7 @@ void MqttView::publishSensorDiscovery(const char* id, const char* name,
     doc["state_topic"] = topic;
     doc["unit_of_measurement"] = unit;
     if (devClass) doc["device_class"] = devClass;
+    if (stateClass) doc["state_class"] = stateClass;
     doc["value_template"] = "{{ value }}";
     doc["availability_topic"] = "boiler/status/online";
     doc["payload_available"]  = "online";
@@ -302,6 +309,13 @@ void MqttView::publishState() {
         publishIfChanged("boiler/sensor/outside_temp", _lastOutsideTemp, s.outsideTemp, buf);
     }
 
+    // Energy meter (kWh, 3 decimals = 1 Wh resolution)
+    {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%.3f", _state.energy.totalWh / 1000.0);
+        publishIfChanged("boiler/sensor/heater_energy", _lastEnergyWh, _state.energy.totalWh, buf);
+    }
+
     // Relays
     bool heater = r.heaterOn;
     bool pump   = r.pumpOn;
@@ -398,6 +412,7 @@ bool MqttView::publishIfChanged(const char* topic, T& lastVal, T newVal,
 template bool MqttView::publishIfChanged<float>(const char*, float&, float, const char*, bool);
 template bool MqttView::publishIfChanged<bool>(const char*, bool&, bool, const char*, bool);
 template bool MqttView::publishIfChanged<uint8_t>(const char*, uint8_t&, uint8_t, const char*, bool);
+template bool MqttView::publishIfChanged<uint32_t>(const char*, uint32_t&, uint32_t, const char*, bool);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Incoming MQTT command handling
